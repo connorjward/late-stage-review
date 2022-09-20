@@ -1,0 +1,130 @@
+#! /bin/env python
+
+import math
+
+import matplotlib.pyplot as plt
+import typer
+
+
+DEFAULT_OUTFILE = "roofline.pgf"
+DEFAULT_WIDTH = 345.0  # document width in points
+DEFAULT_HEIGHT = DEFAULT_WIDTH * 0.8
+
+PEAK_SCALAR = 2
+PEAK_VECTOR = 16
+MAIN_MEMORY_BANDWIDTH = 30
+CACHE_BANDWIDTH = 100
+
+MIN_ARITHMETIC_INTENSITY = 1/1064
+MAX_ARITHMETIC_INTENSITY = 16
+MIN_THROUGHPUT = 1/100
+MAX_THROUGHPUT = 80
+
+
+def inches_to_pts(inches):
+    return inches * 72
+
+
+def pts_to_inches(pts):
+    return pts / 72
+
+
+def plot_line(ax, xmin, xmax, ymin, ymax):
+    ax.plot(
+        [xmin, xmax],
+        [ymin, ymax],
+        color="black"
+    )
+
+
+def main(
+    outfile: str = typer.Option("", "-o"),
+    height: int = DEFAULT_HEIGHT,
+    width: int = DEFAULT_WIDTH
+):
+    fig, ax = plt.subplots(
+        1, 1,
+        figsize=(pts_to_inches(width), pts_to_inches(height))
+    )
+
+    ax.set_xlabel("Arithmetic intensity (FLOPs/byte)")
+    ax.set_ylabel("Arithmetic throughput (FLOPs/sec)")
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+
+    ax.set_xlim(MIN_ARITHMETIC_INTENSITY, MAX_ARITHMETIC_INTENSITY)
+    ax.set_ylim(MIN_THROUGHPUT, MAX_THROUGHPUT)
+
+    # hide tick labels but show grid
+    ax.set_xticklabels([""]*len(ax.get_xticks()))
+    ax.set_yticklabels([""]*len(ax.get_yticks()))
+
+    # cache bandwidth
+    xmin = MIN_ARITHMETIC_INTENSITY
+    ymin = MIN_ARITHMETIC_INTENSITY * CACHE_BANDWIDTH
+    xmax = PEAK_VECTOR / CACHE_BANDWIDTH
+    ymax = PEAK_VECTOR
+    plot_line(ax, xmin, xmax, ymin, ymax)
+    ax.annotate(
+        "Peak cache bandwidth",
+        (MIN_ARITHMETIC_INTENSITY, ymin),
+        (40, 40),
+        textcoords="offset points",
+        rotation=math.degrees(math.atan(height/width)),
+        rotation_mode="anchor",
+    )
+
+    # main memory bandwidth
+    xmin = MIN_ARITHMETIC_INTENSITY
+    ymin = MIN_ARITHMETIC_INTENSITY * MAIN_MEMORY_BANDWIDTH
+    xmax = PEAK_VECTOR / MAIN_MEMORY_BANDWIDTH
+    ymax = PEAK_VECTOR
+    plot_line(ax, xmin, xmax, ymin, ymax)
+    ax.annotate(
+        "Peak main memory bandwidth",
+        (MIN_ARITHMETIC_INTENSITY, ymin),
+        (40, 40),
+        textcoords="offset points",
+        rotation=math.degrees(math.atan(height/width)),
+        rotation_mode="anchor",
+    )
+
+    # peak scalar throughput
+    xmin = PEAK_SCALAR / CACHE_BANDWIDTH
+    xmax = MAX_ARITHMETIC_INTENSITY
+    ymin = ymax = PEAK_SCALAR
+    plot_line(ax, xmin, xmax, ymin, ymax)
+    ax.annotate(
+        "Peak scalar throughput",
+        (MAX_ARITHMETIC_INTENSITY, ymax),
+        (-200, 10),
+        textcoords="offset points"
+    )
+
+    # peak vector throughput
+    xmin = PEAK_VECTOR / CACHE_BANDWIDTH
+    xmax = MAX_ARITHMETIC_INTENSITY
+    ymin = ymax = PEAK_VECTOR
+    plot_line(ax, xmin, xmax, ymin, ymax)
+    ax.annotate(
+        "Peak vector throughput",
+        (MAX_ARITHMETIC_INTENSITY, ymax),
+        (-200, 10),
+        textcoords="offset points"
+    )
+
+    # plot A
+    x = 1 / 256
+    y = 1/16
+    ax.scatter([x], [y], color="red")
+    ax.annotate("A", (x, y), (10, 10), textcoords="offset points")
+
+    if outfile:
+        fig.savefig(outfile, backend="pgf")
+    else:
+        plt.show()
+
+
+if __name__ == "__main__":
+    typer.run(main)

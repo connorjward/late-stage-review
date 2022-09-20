@@ -1,0 +1,62 @@
+\documentclass{report}
+
+\usepackage{graphicx}
+  \graphicspath{{../figures}}
+\usepackage{pgf}
+\usepackage{tikz}
+  \tikzstyle{ptlabel} = [anchor=center, color=black, right=0.5cm, below=0.25cm]
+
+\begin{document}
+
+% \input{../figures/roofline.pgf}
+\begin{figure}
+  \input{../figures/roofline.pgf}
+\end{figure}
+
+
+
+\begin{tikzpicture}[y=-1cm]
+  \fill[lightgray] (0,0) rectangle(7,1);
+  \filldraw[draw=black, fill=white] (0.5,0) node[ptlabel]{c0} rectangle (1.5,1);
+  \filldraw[draw=black, fill=white] (1.5,0) node[ptlabel]{v1} rectangle (2.5,1);
+  \filldraw[draw=black, fill=white] (2.5,0) node[ptlabel]{c4} rectangle (3.5,1);
+  \filldraw[draw=black, fill=white] (3.5,0) node[ptlabel]{v8} rectangle (4.5,1);
+  \draw (0,0) -- (7,0);
+  \draw (0,1) -- (7,1);
+
+  \filldraw[draw=black, fill=white] (2,2) node[ptlabel]{d0} rectangle (3,3);
+  \filldraw[draw=black, fill=white] (3,2) node[ptlabel]{d1} rectangle (4,3);
+  \draw (2,2) rectangle (4,3);
+
+  \draw (2.5,1) -- (2,2);
+  \draw (3.5,1) -- (4,2);
+
+\end{tikzpicture}
+
+\vspace{10em}
+
+\begin{tikzpicture}[y=-1cm]
+  \filldraw[draw=black, fill=white] (3,0) node[ptlabel]{V1} rectangle (4,1);
+  \filldraw[draw=black, fill=white] (4,0) node[ptlabel]{V2} rectangle (5,1);
+
+  \fill[lightgray] (0,2) rectangle (4,3);
+  \filldraw[draw=black, fill=white] (0.5,2) node[ptlabel]{c0} rectangle (1.5,3);
+  \filldraw[draw=black, fill=white] (1.5,2) node[ptlabel]{v1} rectangle (2.5,3);
+  \filldraw[draw=black, fill=white] (2.5,2) node[ptlabel]{c4} rectangle (3.5,3);
+  \draw (0,2) -- (4,2);
+  \draw (0,3) -- (4,3);
+
+  \fill[lightgray] (5,2) rectangle (9,3);
+  \filldraw[draw=black, fill=white] (5.5,2) node[ptlabel]{c0} rectangle (6.5,3);
+  \filldraw[draw=black, fill=white] (6.5,2) node[ptlabel]{v1} rectangle (7.5,3);
+  \filldraw[draw=black, fill=white] (7.5,2) node[ptlabel]{c4} rectangle (8.5,3);
+  \draw (5,2) -- (9,2);
+  \draw (5,3) -- (9,3);
+
+  \draw[->] (3.5,1) .. controls ([yshift=-1cm] 3.5,1) and ([yshift=1cm] 2,2) .. (2,2);
+  \draw[->] (4.5,1) .. controls ([yshift=-1cm] 4.5,1) and ([yshift=1cm] 7,2) .. (7,2);
+
+  
+\end{tikzpicture}
+
+\end{document}
