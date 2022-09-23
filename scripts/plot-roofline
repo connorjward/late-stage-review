@@ -7,7 +7,7 @@ import typer
 
 
 DEFAULT_OUTFILE = "roofline.pgf"
-DEFAULT_WIDTH = 345.0  # document width in points
+DEFAULT_WIDTH = 345.0 * 0.95 # document width in points
 DEFAULT_HEIGHT = DEFAULT_WIDTH * 0.8
 
 PEAK_SCALAR = 2
@@ -19,6 +19,9 @@ MIN_ARITHMETIC_INTENSITY = 1/1064
 MAX_ARITHMETIC_INTENSITY = 16
 MIN_THROUGHPUT = 1/100
 MAX_THROUGHPUT = 80
+
+
+plt.style.use("report")
 
 
 def inches_to_pts(inches):
