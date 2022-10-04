@@ -4,31 +4,15 @@
   \graphicspath{{../figures}}
 \usepackage{pgf}
 \usepackage{tikz}
+\usepackage{tkz-euclide}
   \usetikzlibrary{arrows,calc}
   \pgfdeclarelayer{background}
   \pgfsetlayers{background,main}
-  \tikzstyle{ptlabel} = [anchor=center, color=black, right=0.5cm, below=0.25cm, opacity=1]
-  \tikzstyle{cell} = [draw=black, fill=red, opacity=.3]
-  \tikzstyle{vert} = [draw=black, fill=blue, opacity=.3]
-\usepackage{tkz-euclide}
+  \tikzstyle{ptlabel} = [anchor=center, color=black, opacity=1]
+  \tikzset{font={\small}}
+  \tikzset{label style/.append style={font=\small}}
 
 \begin{document}
-
-% source: https://tex.stackexchange.com/questions/356564/macro-for-rounded-polygon-around-some-nodes
-\def\drawpolygon#1,#2;{
-    \begin{pgfonlayer}{background}
-        \filldraw[line width=5,join=round](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
-        \filldraw[line width=4,join=round,white](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
-    \end{pgfonlayer}
-}
-
-% my attempt at inner lines
-\def\drawpolygon#1,#2;{
-    \begin{pgfonlayer}{background}
-        \filldraw[line width=4](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
-        \draw[line width=5,white](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
-    \end{pgfonlayer}
-}
 
 \begin{figure}
   \input{../figures/roofline.pgf}
@@ -39,19 +23,27 @@
 % data layout example
 \begin{tikzpicture}[y=-1cm]
   \fill[lightgray] (0,0) rectangle(7,1);
-  \filldraw[draw=black, fill=white] (0.5,0) node[ptlabel]{c0} rectangle (1.5,1);
-  \filldraw[draw=black, fill=white] (1.5,0) node[ptlabel]{v1} rectangle (2.5,1);
-  \filldraw[draw=black, fill=white] (2.5,0) node[ptlabel]{c4} rectangle (3.5,1);
-  \filldraw[draw=black, fill=white] (3.5,0) node[ptlabel]{v8} rectangle (4.5,1);
+  \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+  \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+  \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+  \filldraw[draw=black, fill=white] (3.5,0) rectangle (4.5,1);
+  \node[at={(1,.5)}, ptlabel] {$c_0$};
+  \node[at={(2,.5)}, ptlabel] {$v_1$};
+  \node[at={(3,.5)}, ptlabel] {$c_4$};
+  \node[at={(4,.5)}, ptlabel] {$v_8$};
   \draw (0,0) -- (7,0);
   \draw (0,1) -- (7,1);
 
-  \filldraw[draw=black, fill=white] (2,2) node[ptlabel]{d0} rectangle (3,3);
-  \filldraw[draw=black, fill=white] (3,2) node[ptlabel]{d1} rectangle (4,3);
-  \draw (2,2) rectangle (4,3);
+  \begin{scope}[yshift=-2cm]
+    \filldraw[draw=black, fill=white] (2,0) rectangle (3,1);
+    \filldraw[draw=black, fill=white] (3,0) rectangle (4,1);
+    \node[at={(2.5,.5)}, ptlabel] {$d_0$};
+    \node[at={(3.5,.5)}, ptlabel] {$d_1$};
+    \draw (2,0) rectangle (4,1);
 
-  \draw (2.5,1) -- (2,2);
-  \draw (3.5,1) -- (4,2);
+    \draw (2.5,-1) -- (2,0);
+    \draw (3.5,-1) -- (4,0);
+  \end{scope}
 
 \end{tikzpicture}
 
@@ -59,25 +51,43 @@
 
 % mixed reordering
 \begin{tikzpicture}[y=-1cm]
-  \filldraw[draw=black, fill=white] (3,0) node[ptlabel]{V1} rectangle (4,1);
-  \filldraw[draw=black, fill=white] (4,0) node[ptlabel]{V2} rectangle (5,1);
+  \begin{scope}[xshift=3.5cm, yshift=0cm]
+    \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
+    \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
+    \node[at={(.5,.5)}, ptlabel] {$V_0$};
+    \node[at={(1.5,.5)}, ptlabel] {$V_1$};
+  \end{scope}
 
-  \fill[lightgray] (0,2) rectangle (4,3);
-  \filldraw[cell] (0.5,2) node[ptlabel]{c0} rectangle (1.5,3);
-  \filldraw[vert] (1.5,2) node[ptlabel]{v1} rectangle (2.5,3);
-  \filldraw[cell] (2.5,2) node[ptlabel]{c4} rectangle (3.5,3);
-  \draw (0,2) -- (4,2);
-  \draw (0,3) -- (4,3);
+  \begin{scope}[yshift=-2cm]
+    \begin{scope}[xshift=0cm]
+      \fill[lightgray] (0,0) rectangle (4,1);
+      \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+      \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+      \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+      \node[at={(1,.5)}, ptlabel] {$c_0$};
+      \node[at={(2,.5)}, ptlabel] {$v_1$};
+      \node[at={(3,.5)}, ptlabel] {$c_4$};
+      \draw (0,0) -- (4,0);
+      \draw (0,1) -- (4,1);
+    \end{scope}
 
-  \fill[lightgray] (5,2) rectangle (9,3);
-  \filldraw[cell] (5.5,2) node[ptlabel]{c0} rectangle (6.5,3);
-  \filldraw[vert] (6.5,2) node[ptlabel]{v1} rectangle (7.5,3);
-  \filldraw[cell] (7.5,2) node[ptlabel]{c4} rectangle (8.5,3);
-  \draw (5,2) -- (9,2);
-  \draw (5,3) -- (9,3);
+    \begin{scope}[xshift=5cm]
+      \fill[lightgray] (0,0) rectangle (4,1);
+      \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+      \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+      \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+      \node[at={(1,.5)}, ptlabel] {$c_0$};
+      \node[at={(2,.5)}, ptlabel] {$v_1$};
+      \node[at={(3,.5)}, ptlabel] {$c_4$};
+      \draw (0,0) -- (4,0);
+      \draw (0,1) -- (4,1);
+    \end{scope}
+  \end{scope}
 
-  \draw[->] (3.5,1) .. controls ([yshift=-1cm] 3.5,1) and ([yshift=1cm] 2,2) .. (2,2);
-  \draw[->] (4.5,1) .. controls ([yshift=-1cm] 4.5,1) and ([yshift=1cm] 7,2) .. (7,2);
+  \draw (3.5,1) -- (0,2);
+  \draw (4.5,1) -- (4,2);
+  \draw (4.5,1) -- ({0+5},2);
+  \draw (5.5,1) -- ({4+5},2);
 
 \end{tikzpicture}
 
@@ -204,15 +214,15 @@
 
   % add labels
   \tkzDefBarycentricPoint(e0v0=1,e1v0=1,e2v0=1) \tkzGetPoint{c0c1}
-  \node [xshift=-2cm,yshift=.8cm] (c0c1label) at (c0c1) {$(c_5,c_1)$};
+  \node [xshift=-2cm,yshift=.8cm] (c0c1label) at (c0c1) {$(c_i,c_1)$};
   \draw (c0c1label) -- (c0c1);
 
   \tkzDefMidPoint(e1v0,c0e2v0) \tkzGetPoint{c0e2}
-  \node [xshift=2cm,yshift=.8cm] (c0e2label) at (c0e2) {$(c_5,e_2,e_0)$};
+  \node [xshift=2cm,yshift=.8cm] (c0e2label) at (c0e2) {$(c_i,e_2,e_0)$};
   \draw (c0e2label) -- (c0e2);
 
   \tkzDefBarycentricPoint(e1v0=1,e1e1v0=1,c0e2v0=1) \tkzGetPoint{c0c3c2}
-  \node [xshift=2cm,yshift=-.2cm] (c0c3c2label) at (c0c3c2) {$(c_5,c_3,c_2)$};
+  \node [xshift=2cm,yshift=-.2cm] (c0c3c2label) at (c0c3c2) {$(c_i,c_3,c_2)$};
   \draw (c0c3c2label) -- (c0c3c2);
 
 \end{tikzpicture}
@@ -223,43 +233,68 @@
 \begin{tikzpicture}[y=-1cm]
   \begin{scope}[xshift=1.5cm, yshift=0cm]
     \fill[lightgray] (0,0) rectangle (4,1);
-    \filldraw[draw=black, fill=white] (1.5,0) node[ptlabel]{$c_5$} rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (1.5,0) rectangle ++ (1,1);
+    \node[at={(2,.5)}, ptlabel] {$c_i$};
     \draw (0,0) -- (4,0);
     \draw (0,1) -- (4,1);
   \end{scope}
 
-  \begin{scope}[xshift=0cm, yshift=-2cm]
-    \filldraw[draw=black, fill=blue!20] (0,0) node[ptlabel]{$c_1$} rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (1,0) node[ptlabel]{$c_2$} rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (2,0) node[ptlabel]{$c_3$} rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (3,0) node[ptlabel]{$c_4$} rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (4,0) node[ptlabel]{$e_0$} rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (5,0) node[ptlabel]{$e_1$} rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (6,0) node[ptlabel]{$e_2$} rectangle ++ (1,1);
+  \begin{scope}[xshift=.5cm, yshift=-2cm]
+    \filldraw[draw=black, fill=blue!20] (0,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (3,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (4,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (5,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (6,0) rectangle ++ (1,1);
+    \node[at={(.5,.5)}, ptlabel] {$c_0$};
+    \node[at={(1.5,.5)}, ptlabel] {$c_1$};
+    \node[at={(2.5,.5)}, ptlabel] {$c_2$};
+    \node[at={(3.5,.5)}, ptlabel] {$c_3$};
+    \node[at={(4.5,.5)}, ptlabel] {$e_0$};
+    \node[at={(5.5,.5)}, ptlabel] {$e_1$};
+    \node[at={(6.5,.5)}, ptlabel] {$e_2$};
 
-    \draw[->] (3.45,-1) .. controls ([yshift=-.7cm] 3.45,-1) and ([yshift=1cm] .5,0) .. (.5,0);
-    \draw[->] (3.5,-1) .. controls ([yshift=-.8cm] 3.5,-1) and ([yshift=1cm] 2.5,0) .. (2.5,0);
-    \draw[->] (3.55,-1) .. controls ([yshift=-.7cm] 3.55,-1) and ([yshift=1cm] 6.5,0) .. (6.5,0);
+    % \draw[->] (2.8,-1) .. controls ([yshift=-.4cm] 2.6,-1) and ([yshift=.6cm] 1,0) .. (.8,0);
+    % \draw[->] (3,-1) .. controls ([yshift=-.6cm] 3,-1) and ([yshift=1cm] 3.5,0) .. (3.5,0);
+    % \draw[->] (3.2,-1) .. controls ([yshift=-.4cm] 3,-1) and ([yshift=.6cm] 6,0) .. (6.2,0);
   \end{scope}
 
   \begin{scope}[xshift=0cm, yshift=-4cm]
     % c3
     \begin{scope}[xshift=0cm]
       \fill[lightgray] (0,0) rectangle (4,1);
-      \filldraw[draw=black, fill=white] (.5,0) node[ptlabel]{$c_1$} rectangle ++ (1,1);
-      \filldraw[draw=black, fill=blue!20] (1.5,0) node[ptlabel]{$c_2$} rectangle ++ (1,1);
-      \filldraw[draw=black, fill=white] (2.5,0) node[ptlabel]{$c_3$} rectangle ++ (1,1);
-      \draw[->] (2.5,-1) .. controls ([yshift=-.6cm] 2.5,-1) and ([yshift=1cm] 2,0) .. (2,0);
+      \filldraw[draw=black, fill=white] (.5,0) rectangle ++ (1,1);
+      \filldraw[draw=black, fill=blue!20] (1.5,0) rectangle ++ (1,1);
+      \filldraw[draw=black, fill=white] (2.5,0) rectangle ++ (1,1);
+      \node[at={(1,.5)}, ptlabel] {$c_1$};
+      \node[at={(2,.5)}, ptlabel] {$c_2$};
+      \node[at={(3,.5)}, ptlabel] {$c_3$};
+      \draw (0,0) -- (4,0);
+      \draw (0,1) -- (4,1);
+      % \draw[->] (4,-1) .. controls ([yshift=-.7cm] 4,-1) and ([yshift=1cm] 2,0) .. (2,0);
     \end{scope}
 
     % e2
-    \begin{scope}[xshift=4.5cm]
-      \filldraw[draw=black, fill=blue!20] (0,0) node[ptlabel]{$e_0$} rectangle ++ (1,1);
-      \filldraw[draw=black, fill=white] (1,0) node[ptlabel]{$e_1$} rectangle ++ (1,1);
-      \filldraw[draw=black, fill=white] (2,0) node[ptlabel]{$v_0$} rectangle ++ (1,1);
-      \draw[->] (2,-1) .. controls ([yshift=-.6cm] 2,-1) and ([yshift=1cm] .5,0) .. (.5,0);
+    \begin{scope}[xshift=5cm]
+      \filldraw[draw=black, fill=blue!20] (0,0) rectangle ++ (1,1);
+      \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+      \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+      \node[at={(.5,.5)}, ptlabel] {$e_0$};
+      \node[at={(1.5,.5)}, ptlabel] {$e_1$};
+      \node[at={(2.5,.5)}, ptlabel] {$v_0$};
+      % \draw[->] (2,-1) .. controls ([yshift=-.7cm] 2,-1) and ([yshift=1cm] .5,0) .. (.5,0);
     \end{scope}
   \end{scope}
+
+  \draw ({1.5+1.5},1) -- ({0+.5},2);
+  \draw ({2.5+1.5},1) -- ({7+.5},2);
+
+  \draw ({2+1.5},3) -- ({0+0},4);
+  \draw ({3+1.5},3) -- ({4+0},4);
+
+  \draw ({5+1.5},3) -- ({0+5},4);
+  \draw ({6+1.5},3) -- ({3+5},4);
 \end{tikzpicture}
 
 \vspace{2em}
@@ -292,10 +327,6 @@
   \tkzDrawSegment(c0e2v0,e1e1v0)
 
   \tkzDrawSegment(e0v0,c0e2v0)
-
-  % testing
-  \drawpolygon c0e2v0,e1v0,e1e1v0;
-
 \end{tikzpicture}
 
 \vspace{1em}
