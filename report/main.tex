@@ -1,5 +1,10 @@
 \documentclass{report}
 
+\usepackage[acronym,nomain]{glossaries}
+  \newacronym{dof}{DoF}{degrees-of-freedom}
+  \newacronym{dofs}{DoFs}{degrees-of-freedom}
+  \newacronym{pde}{PDE}{partial differential equation}
+  \newacronym{flops}{FLOPs}{floating point operations per second}
 \usepackage{graphicx}
   \graphicspath{{../figures}}
 \usepackage{pgf}
@@ -12,7 +17,20 @@
   \tikzset{font={\small}}
   \tikzset{label style/.append style={font=\small}}
 
+
+% macros
+\newcommand{\projectname}{\texttt{pyop3}}
+
+% title
+\title{High performance mesh abstractions}
+\author{Connor Ward}
+\date{\today}
+
 \begin{document}
+
+\maketitle
+
+\input{introduction}
 
 \begin{figure}
   \input{../figures/roofline.pgf}
@@ -240,8 +258,8 @@
   \end{scope}
 
   \begin{scope}[xshift=.5cm, yshift=-2cm]
-    \filldraw[draw=black, fill=blue!20] (0,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+    \filldraw[draw=black, fill=blue!20] (1,0) rectangle ++ (1,1);
     \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
     \filldraw[draw=black, fill=white] (3,0) rectangle ++ (1,1);
     \filldraw[draw=black, fill=white] (4,0) rectangle ++ (1,1);
