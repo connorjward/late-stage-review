@@ -15,10 +15,10 @@ With a code generation framework, the key questions now become:
 What is an appropriate abstraction for capturing all of the behaviour I wish to model?
 What performance optimisations are nicely expressed at this layer of abstraction?
 
-In this work, we present \projectname, a library for mesh computations.
+In this work, we present \projectname, a library for the fast execution of mesh-based computations.
 In accordance with the principles described above, \projectname deals mainly in 3 abstractions:
 Firstly, the user interface is motivated by the fact that many operations relating to the solution of \gls{pde}s can be expressed as the operation of some `local' kernel over a set of entities in the mesh where only functions with non-zero support on this entity are considered in the calculation.
-A classic example of this sort of calculation occurs with finite element assembly where the cells of the mesh are the iteration set and the kernel uses \gls{dofs} from the cell and enclosing edges and vertices.
+A classic example of this sort of calculation occurs with finite element assembly where the cells of the mesh are the iteration set and the kernel uses \glspl{dof} from the cell and enclosing edges and vertices.
 This first abstraction layer therefore presents an interface to the user where they may straightforwardly express the operation of local kernels within loops over mesh entities, specifying the requisite restrictions for the data.
 The second abstraction, intended as an internal representation for the developer, describes the data layout and the third is a polyhedral loop model that is the target for the code generation.
 

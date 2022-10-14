@@ -1,0 +1,177 @@
+\section{Background}
+
+In this chapter we review: existing software abstractions for mesh computations, common strategies for optimising performance, and mesh-specific optimisations.
+
+\subsection{Existing software abstractions}
+
+\subsection{Stencil languages}
+
+Given the ubiquity of stencil operations in simulations, a number of libraries exist providing convenient interfaces for stencil applications.
+
+% they are largely all inspired by the following pieces of info:
+% - a mesh can be considered as sets of entities
+% - one loops over a set, collects adjacent data, then calls some local kernel
+% - the local kernel may be written in the same language as the stencil language, but it needn't be
+
+Ebb, Simit and Liszt follow the approach of providing a domain-specific language for the expression of stencil problems...
+They all provide high performance execution on GPUs as well as CPUs.
+
+% i don't think simit works on MPI
+
+OP2 is another approach~\cite{mudaligeOP2ActiveLibrary2012,mudaligeDesignInitialPerformance2013}.
+Rather than using a domain-specific language, OP2 provides a simple API to the user for specifying the problem.
+The key entities in the OP2 data model are: sets, data on sets, mappings between sets, and operations applied over these sets.
+Having provided these inputs, the OP2 compiler is then called and transforms to source code to a high performance implementation of the traversal for a specific architecture.
+
+% then PyOP2
+% describe libCEED - main benefit is that it is fast.
+
+% it is noteworthy that Ebb, Simit, Liszt have custom implementations of unstructured meshes.
+% whereas (Py)OP2 and libCEED have an abstraction that does not specifically include a mesh.
+% the latter is favourable as one can reuse existing solutions to other mesh problems like
+% refinement, adaptivity, I/O, decomposition...
+% however, lack of topological information can make code unreadable, hard to write as
+% topological info is lost, e.g. composability is not really possible.
+
+% this leads very nicely into discussion of DMPlex
+% note: we don't have a nice solution to orientations yet - but no one does
+
+Another library for the application of stencil operations, specifically high-order matrix-free kernels for the \gls{fem}, is libCEED.
+% libceed - actually offloaded to PETSc for element restriction (the bit PyOP2 does)
+% it's nice that libCEED and PyOP2 use DMPlex as the burden of other mesh operations (e.g. distribution, I/O, refinement) are very non-trivial
+
+PyOP2 is a domain-specific language for expressing computations over unstructured meshes.
+It is the direct precursor, and inspiration for, \projectname.
+
+It distinguishes itself from OP2, a library depending on the same abstractions, by using run-time code generation instead of static analysis and transformation of the source code.
+
+PyOP2's mesh abstraction is formed out of the following main components:
+
+% \begin{itemize}
+%   \item \mintinline{python}{set}
+% \end{itemize}
+
+In PyOP2, data is defined on \textit{sets} and these are related to one another using \textit{mappings}.
+Importantly, this abstraction does not contain any concept of the underlying mesh and instead all of the required information is encoded in the maps.
+
+  Computations over the mesh are expressed as the execution of some local kernel over all entities of some iteration set via a construct called a parallel loop, or \textit{parloop}.
+  The kernel is written using Loopy, a library for expressing array-based computations in a platform-generic language~\cite{klocknerLooPyTransformationbased2014}.
+  This intermediate representation allows for interplay between the local kernels enabling optimisations such as inter-element vectorisation~\cite{sunStudyVectorizationMatrixfree2020}.
+
+  At present, PyOP2 only works on distributed memory, CPU-only systems (although some work has been done to permit execution on GPUs~\cite{fenics2021-kulkarni}).
+  During the execution of a parloop, each rank works independently on some partition of the mesh.
+  To avoid excessive communication between ranks, each rank has a narrow \textit{halo} region that overlaps with neighbouring ranks that is executed redundantly.
+  The halos are split into \textit{owned}, \textit{exec}, and \textit{non-exec} regions to indicate the data's origin and the communication direction between the neighbouring processes.
+
+
+% Liszt, Simit - notably associates data information with topological entities
+
+\subsubsection{Mesh representations}
+
+In software, a mesh is typically represented by a collection of sets of entities (e.g. cells or faces), coupled with adjacency relations between these sets.
+Possible abstractions capturing this behaviour include databases (ebb, moab) or hypergraphs (simit).
+In this work we focus on DMPlex, the unstructured mesh abstraction used in PETSc.
+In contrast with Ebb, Simit or Liszt, DMPlex is a more general purpose mesh abstraction and so has a more substantial feature set.z
+
+In DMPlex, the mesh is represented as a \textit{CW-complex}, an object from algebraic topology that describes some topological space.
+In such a complex, all topological entities (e.g. cells, vertices) are simply referred to as \textit{points} and the connectivity of the mesh can be expressed as the edges of a \gls{dag} with the vertices being the points of the mesh.
+More specifically, the points and relations form a \gls{poset} such that the mesh can be visualised using a Hasse diagram (Figure~\ref{fig:hasse_diagram}).
+
+It is important to note that DMPlex works for arbitrary dimension.
+
+\begin{figure}
+  \begin{subfigure}{0.45\textwidth}
+    \begin{tikzpicture}
+      \draw (0,2) -- (2,0);
+      \draw (0,2) -- (2,4);
+      \draw (2,0) -- (2,4);
+      \draw (2,0) -- (4,2);
+      \draw (2,4) -- (4,2);
+
+      \node[at={(1,2)}, xshift=.2cm] {1};
+      \node[at={(3,2)}, xshift=-.2cm] {2};
+      \node[at={(0,2)}, xshift=-.2cm] {3};
+      \node[at={(2,4)}, yshift=.2cm] {4};
+      \node[at={(2,0)}, yshift=-.2cm] {5};
+      \node[at={(4,2)}, xshift=.2cm] {6};
+      \node[at={(1,1)}, xshift=-.2cm, yshift=-.2cm] {7};
+      \node[at={(1,3)}, xshift=-.2cm, yshift=.2cm] {8};
+      \node[at={(2,2)}, xshift=-.2cm] {9};
+      \node[at={(3,3)}, xshift=.2cm, yshift=.2cm] {10};
+      \node[at={(3,1)}, xshift=.2cm, yshift=-.2cm] {11};
+    \end{tikzpicture}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}[every node/.style={circle,draw,color=black}]
+      \begin{scope}[yshift=0cm]
+        \node (1) [xshift={1*\textwidth/3}] {1};
+        \node (2) [xshift={2*\textwidth/3}] {2};
+      \end{scope}
+
+      \begin{scope}[yshift=2cm]
+        \node (7) [xshift={1*\textwidth/6}] {7};
+        \node (8) [xshift={2*\textwidth/6}] {8};
+        \node (9) [xshift={3*\textwidth/6}] {9};
+        \node (10) [xshift={4*\textwidth/6}] {10};
+        \node (11) [xshift={5*\textwidth/6}] {11};
+      \end{scope}
+
+      \begin{scope}[yshift=4cm]
+        \node (3) [xshift={1*\textwidth/5}] {3};
+        \node (4) [xshift={2*\textwidth/5}] {4};
+        \node (5) [xshift={3*\textwidth/5}] {5};
+        \node (6) [xshift={4*\textwidth/5}] {6};
+      \end{scope}
+
+      \draw [-Stealth] (1) -- (7);
+      \draw [-Stealth] (1) -- (8);
+      \draw [-Stealth] (1) -- (9);
+      \draw [-Stealth] (2) -- (9);
+      \draw [-Stealth] (2) -- (10);
+      \draw [-Stealth] (2) -- (11);
+      \draw [-Stealth] (7) -- (3);
+      \draw [-Stealth] (7) -- (5);
+      \draw [-Stealth] (8) -- (3);
+      \draw [-Stealth] (8) -- (4);
+      \draw [-Stealth] (9) -- (4);
+      \draw [-Stealth] (9) -- (5);
+      \draw [-Stealth] (10) -- (4);
+      \draw [-Stealth] (10) -- (6);
+      \draw [-Stealth] (11) -- (5);
+      \draw [-Stealth] (11) -- (6);
+    \end{tikzpicture}
+  \end{subfigure}
+
+  \caption{...}
+  \label{fig:hasse_diagram}
+\end{figure}
+
+% stencil operations next - closure, star, etc
+
+
+Mesh applications are very diverse, resulting in a wide range of different abstractions and implementations depending upon the discipline.
+For simulating \gls{pde}s, the main thing a mesh is needed for is for performing \textit{stencil} queries.
+A stencil query is a query of the form: ``What are the cells next to me?", or ``What are the edges and vertices that are incident on this cell?".
+
+Using the $k$-cell definition above, one can represent an unstructured mesh as a \textit{CW-complex}.
+Enter DMPlex...
+
+
+
+Stencil queries are natural to express at this level.
+For instance, the classical finite element request of ``give me all of the \glspl{dof} that have local support" is simply expressed as the closure of a given cell.
+Another example useful for finite volume calculations: ``what are my neighbouring cells?" is supp(cone(c)).
+One can also do clever patch things.
+
+
+\subsection{Performance optimisation}
+
+\subsubsection{Roofline model}
+
+\begin{figure}
+  \input{./figures/roofline.pgf}
+\end{figure}
+
+\subsection{Optimisations for mesh computations}

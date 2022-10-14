@@ -1,0 +1,47 @@
+\documentclass[a4,10pt]{article}
+
+% packages
+\usepackage{biblatex}
+  \addbibresource{bibliography.bib}
+\usepackage[acronym,nomain]{glossaries}
+  \setacronymstyle{long-short}
+  \newacronym[shortplural={DoFs},longplural={degrees-of-freedom}]{dof}{DoF}{degree-of-freedom}
+  \newacronym{fem}{FEM}{finite element method}
+  \newacronym{pde}{PDE}{partial differential equation}
+  \newacronym{flops}{FLOPs}{floating point operations per second}
+  \newacronym{dag}{DAG}{directed acyclic graph}
+  \newacronym{poset}{poset}{partially-ordered set}
+\usepackage{graphicx}
+  \graphicspath{{figures}}
+\usepackage{minted}
+\usepackage{subcaption}
+\usepackage{pgf}
+\usepackage{tikz}
+\usepackage{tkz-euclide}
+  \usetikzlibrary{arrows,calc,graphs,graphdrawing}
+  \usegdlibrary{trees}
+  \pgfdeclarelayer{background}
+  \pgfsetlayers{background,main}
+  \tikzstyle{ptlabel} = [anchor=center, color=black, opacity=1]
+  \tikzset{font={\small}}
+  \tikzset{label style/.append style={font=\small}}
+
+% macros
+\newcommand{\projectname}{\texttt{pyop3}}
+
+% title
+\title{High performance mesh abstractions}
+\author{Connor Ward}
+\date{\today}
+
+\begin{document}
+  \maketitle
+
+  \input{sections/introduction}
+  \input{sections/background}
+  \input{sections/implementation}
+  \input{sections/future_work}
+  \input{sections/conclusions}
+
+  \printbibliography
+\end{document}
