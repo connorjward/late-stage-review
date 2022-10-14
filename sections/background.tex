@@ -104,43 +104,8 @@ It is important to note that DMPlex works for arbitrary dimension.
   %
   \begin{subfigure}{0.45\textwidth}
     \centering
-    \begin{tikzpicture}[every node/.style={circle,draw,color=black}]
-      \begin{scope}[yshift=0cm]
-        \node (1) [xshift={1*\textwidth/3}] {1};
-        \node (2) [xshift={2*\textwidth/3}] {2};
-      \end{scope}
-
-      \begin{scope}[yshift=2cm]
-        \node (7) [xshift={1*\textwidth/6}] {7};
-        \node (8) [xshift={2*\textwidth/6}] {8};
-        \node (9) [xshift={3*\textwidth/6}] {9};
-        \node (10) [xshift={4*\textwidth/6}] {10};
-        \node (11) [xshift={5*\textwidth/6}] {11};
-      \end{scope}
-
-      \begin{scope}[yshift=4cm]
-        \node (3) [xshift={1*\textwidth/5}] {3};
-        \node (4) [xshift={2*\textwidth/5}] {4};
-        \node (5) [xshift={3*\textwidth/5}] {5};
-        \node (6) [xshift={4*\textwidth/5}] {6};
-      \end{scope}
-
-      \draw [-Stealth] (1) -- (7);
-      \draw [-Stealth] (1) -- (8);
-      \draw [-Stealth] (1) -- (9);
-      \draw [-Stealth] (2) -- (9);
-      \draw [-Stealth] (2) -- (10);
-      \draw [-Stealth] (2) -- (11);
-      \draw [-Stealth] (7) -- (3);
-      \draw [-Stealth] (7) -- (5);
-      \draw [-Stealth] (8) -- (3);
-      \draw [-Stealth] (8) -- (4);
-      \draw [-Stealth] (9) -- (4);
-      \draw [-Stealth] (9) -- (5);
-      \draw [-Stealth] (10) -- (4);
-      \draw [-Stealth] (10) -- (6);
-      \draw [-Stealth] (11) -- (5);
-      \draw [-Stealth] (11) -- (6);
+    \begin{tikzpicture}
+      \basichasse
     \end{tikzpicture}
   \end{subfigure}
 
@@ -150,14 +115,44 @@ It is important to note that DMPlex works for arbitrary dimension.
 
 % stencil operations next - closure, star, etc
 
+\begin{figure}
+  \centering
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 7,9;
+    \end{tikzpicture}
+    \caption{$cone(1)$}
+  \end{subfigure}
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 1,2;
+    \end{tikzpicture}
+    \caption{$supp(9)$}
+  \end{subfigure}
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 1,7,3,5,9;
+    \end{tikzpicture}
+    \caption{$cl(1)$}
+  \end{subfigure}
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 4,10,2,1,8;
+    \end{tikzpicture}
+    \caption{$star(1)$}
+  \end{subfigure}
 
-Mesh applications are very diverse, resulting in a wide range of different abstractions and implementations depending upon the discipline.
-For simulating \gls{pde}s, the main thing a mesh is needed for is for performing \textit{stencil} queries.
-A stencil query is a query of the form: ``What are the cells next to me?", or ``What are the edges and vertices that are incident on this cell?".
-
-Using the $k$-cell definition above, one can represent an unstructured mesh as a \textit{CW-complex}.
-Enter DMPlex...
-
+  \caption{...}
+  \label{fig:plex_restrictions}
+\end{figure}
 
 
 Stencil queries are natural to express at this level.
