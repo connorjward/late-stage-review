@@ -16,6 +16,7 @@
 \usepackage{minted}
 \usepackage{subcaption}
 \usepackage{pgf}
+\usepackage{pgfplots}
 \usepackage{tikz}
 \usepackage{tkz-euclide}
   \usetikzlibrary{arrows,calc,graphs,graphdrawing,positioning}
@@ -35,6 +36,9 @@
 
 % macros
 \newcommand{\projectname}{\texttt{pyop3}}
+% hacky way to get \pyop2 and \pyop3 as valid macros
+% source: https://tex.stackexchange.com/questions/13290/how-to-define-macros-with-numbers-in-them
+\def\pyop#1{\ifnum#1=2 {PyOP2} \else \ifnum#1=3 {\texttt{pyop3}} \fi \fi}
 \newcommand{\basichasse}{%
   \begin{scope}[auto,every node/.style={circle,minimum size=20pt,draw,color=black}]
     \begin{scope}[yshift=0cm]

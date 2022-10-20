@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import typer
 
 
-DEFAULT_OUTFILE = "roofline.pgf"
 DEFAULT_WIDTH = 345.0 * 0.95 # document width in points
 DEFAULT_HEIGHT = DEFAULT_WIDTH * 0.8
 
@@ -36,14 +35,25 @@ def plot_line(ax, xmin, xmax, ymin, ymax):
     ax.plot(
         [xmin, xmax],
         [ymin, ymax],
-        color="black"
+        color="black",
+        solid_capstyle="round",
     )
+
+
+def log_diff(low, high):
+    return math.log(high) - math.log(low)
+
+
+def compute_angle(xmin, xmax, ymin, ymax, width, height):
+    opp = log_diff(ymin, ymax) / log_diff(MIN_THROUGHPUT, MAX_THROUGHPUT) * height
+    adj = log_diff(xmin, xmax) / log_diff(MIN_ARITHMETIC_INTENSITY, MAX_ARITHMETIC_INTENSITY) * width
+    return math.degrees(math.atan(opp/adj))
 
 
 def main(
     outfile: str = typer.Option("", "-o"),
+    width: int = DEFAULT_WIDTH,
     height: int = DEFAULT_HEIGHT,
-    width: int = DEFAULT_WIDTH
 ):
     fig, ax = plt.subplots(
         1, 1,
@@ -59,7 +69,7 @@ def main(
     ax.set_xlim(MIN_ARITHMETIC_INTENSITY, MAX_ARITHMETIC_INTENSITY)
     ax.set_ylim(MIN_THROUGHPUT, MAX_THROUGHPUT)
 
-    # hide tick labels but show grid
+    # hide tick labels
     ax.set_xticklabels([""]*len(ax.get_xticks()))
     ax.set_yticklabels([""]*len(ax.get_yticks()))
 
@@ -69,13 +79,15 @@ def main(
     xmax = PEAK_VECTOR / CACHE_BANDWIDTH
     ymax = PEAK_VECTOR
     plot_line(ax, xmin, xmax, ymin, ymax)
+
     ax.annotate(
         "Peak cache bandwidth",
         (MIN_ARITHMETIC_INTENSITY, ymin),
-        (40, 40),
+        (12, 15),
         textcoords="offset points",
-        rotation=math.degrees(math.atan(height/width)),
+        rotation=compute_angle(xmin, xmax, ymin, ymax, width, height),
         rotation_mode="anchor",
+        verticalalignment="bottom",
     )
 
     # main memory bandwidth
@@ -87,10 +99,11 @@ def main(
     ax.annotate(
         "Peak main memory bandwidth",
         (MIN_ARITHMETIC_INTENSITY, ymin),
-        (40, 40),
+        (12, 12),
         textcoords="offset points",
-        rotation=math.degrees(math.atan(height/width)),
+        rotation=compute_angle(xmin, xmax, ymin, ymax, width, height),
         rotation_mode="anchor",
+        verticalalignment="bottom",
     )
 
     # peak scalar throughput
@@ -101,8 +114,9 @@ def main(
     ax.annotate(
         "Peak scalar throughput",
         (MAX_ARITHMETIC_INTENSITY, ymax),
-        (-200, 10),
-        textcoords="offset points"
+        (-90, 2),
+        textcoords="offset points",
+        verticalalignment="bottom",
     )
 
     # peak vector throughput
@@ -113,15 +127,37 @@ def main(
     ax.annotate(
         "Peak vector throughput",
         (MAX_ARITHMETIC_INTENSITY, ymax),
-        (-200, 10),
-        textcoords="offset points"
+        (-90, 2),
+        textcoords="offset points",
+        verticalalignment="bottom",
     )
 
     # plot A
     x = 1 / 256
-    y = 1/16
+    y = 1/20
     ax.scatter([x], [y], color="red")
-    ax.annotate("A", (x, y), (10, 10), textcoords="offset points")
+    ax.annotate(
+        "A", (x, y), (7, -7), textcoords="offset points",
+        verticalalignment="center", horizontalalignment="center"
+    )
+
+    # plot B
+    x = 1
+    y = 1/8
+    ax.scatter([x], [y], color="red")
+    ax.annotate(
+        "B", (x, y), (7, -7), textcoords="offset points",
+        verticalalignment="center", horizontalalignment="center"
+    )
+
+    # plot C
+    x = 5
+    y = 9
+    ax.scatter([x], [y], color="red")
+    ax.annotate(
+        "C", (x, y), (7, -7), textcoords="offset points",
+        verticalalignment="center", horizontalalignment="center"
+    )
 
     if outfile:
         fig.savefig(outfile, backend="pgf")

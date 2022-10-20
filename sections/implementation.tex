@@ -3,6 +3,20 @@
 % pyop3 is inspired by Simit in that we have a mesh representation that lowers to an indexed tensor 
 % representation for computing
 
+\subsection{Mesh operations}
+% present the interface
+
+\subsection{Hierarchical data layout}
+
+\pyop3 employs a novel hierarchical data layout.
+It was inspired by considering what the data layouts of mesh data actually look like.
+As a simple example, consider the data layout for a typically unstructured mesh with *some nodes and some DoFs per node* (see Figure X - include a triangle too).
+
+%In \pyop2, we flatten early to a DataSet == Set + dim
+% can only guarantee fixed loop bounds for the innermost `dim` - for codegen.
+
+% now show extruded - demos the need for a hierarchy as flattening clearly loses information.
+% state that this lets us do cool composition?
 
 % data layout example
 \begin{tikzpicture}[y=-1cm]
@@ -30,5 +44,21 @@
   \end{scope}
 
 \end{tikzpicture}
+
+\subsection{Parallel design}
+
+% based on/lifted from PyOP2
+% ghost/halo values for overlaps
+% clever layout means we can exchange core, then owned, interleaving communication
+% PETSc Mat for parallel matrices
+
+% PETSc is scalable (cite?)
+% PyOP2 (via Firedrake assembly) has good weak scalability
+
+% also strong-scaling (but shown otherwise)
+% key is to minimise amount of Python in the hot loops via judicious caching, persistent objects and expanded codegen
+
+% use DG advection as an example - caching and persistent objects can be shown to be key
+% but now things like halo exchanges for valid halos (i.e. noops) have non-trivial cost -> move out of Python to the generated code.
 
 \vspace{1em}

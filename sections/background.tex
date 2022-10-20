@@ -113,8 +113,6 @@ It is important to note that DMPlex works for arbitrary dimension.
   \label{fig:hasse_diagram}
 \end{figure}
 
-% stencil operations next - closure, star, etc
-
 \begin{figure}
   \centering
   \begin{subfigure}{0.45\textwidth}
@@ -402,14 +400,152 @@ However, to our knowledge, this is not performed by any existing stencil library
 
 \subsection{Methods for performance optimisation}
 
-\subsubsection{Roofline model}
+In this section we review some of the common bottlenecks in massively parallel simulation codes, and describe some general ways for quantifying and improving performance.
+In particular we focus on challenges for maximising parallel efficiency and the importance of the roofline model for choosing appropriate optimisations.
+The aim is to motivate design choices made in \pyop3.
+
+\subsubsection{Optimisation methodology}
+
+Premature optimisation is a classic trap software developers fall into when they attempt to accelerate their codes.
+It is surprisingly easy to find oneself making assumptions about the locations and causes of bottlenecks, and then wasting a considerable amount of time on optimising code that only constitutes a small fraction of the overall wall-clock time.
+To avoid this scenario, developers should follow the steps below:
+
+\begin{enumerate}
+  \item
+    \textbf{Find a realistic problem to try and accelerate.}
+
+    Performance optimisation is often guided by toy problems that are simple to write and debug.
+    Such problems, though, may end up having significantly different performance characteristics from a realistic simulation that a user would actually run.
+    This can lead to premature optimisation as the wrong hotspots will be targeted.
+    As a relevant example, one could work hard to optimise data movement for the application of low-order matrix-free stencils since the code will be memory-bound (see section~\ref{sec:background_perf_flops}) and so data movement would be the predominant cost.
+    However, matrix-free methods are usually only applied at high-order~\cite{brownPerformancePortableSolid2022}, at which point the code will be compute-bound and the hotspots will be different.
+  \item
+    \textbf{Identify the hotspots.}
+    \dots
+    % flamegraph
+  \item
+    \textbf{Create a performance model.}
+    \dots
+    % roofline, think about message passing if needed
+  \item
+    \textbf{Optimise the code.}
+    \dots
+    % prioritise algorithmic changes over low-level optimisations as these can change convergence stuff
+    % ref TAS spectrum?
+  \item
+    \textbf{Repeat?}
+    \dots
+    % are we at the fundamental limit of the machine?
+    % is our scaling 'good enough'
+\end{enumerate}
+
+\subsubsection{Achieving parallel efficiency}
+\label{sec:background_perf_efficiency}
+
+In order to run massive simulations, codes must be able to exploit the massive amounts of parallelism afforded to them by modern supercomputers.
+With the building of ever larger and more parallel machines (especially since we are at the ``dawn of exascale''), this is becoming both more important to get right and more challenging to do so.
+
+To quantify a code's effectiveness in parallel, one typically measures its \textit{parallel efficiency} under either \textit{strong-} or \textit{weak-scaling}:
+
+\begin{paragraph}{Strong-scaling}
+A strong-scaling investigation would solve the same problem but on an increasing number of processors and measure the time-to-solution.
+Perfect efficiency (unity) would be achieved if the time-to-solution on $p$ processors was $p$ times smaller than the time-to-solution for a single process.
+If strong-scaling efficiency is poor, this suggests that there are sizeable portions of the code that are getting run in serial on each process, rather than being divided up.
+A code would be considered to have `good' strong-scaling if it retained high efficiency (e.g. 80\%) at small problem sizes (e.g. 5000 \glspl{dof} per process for \gls{fem}).
+\end{paragraph}
+
+\begin{paragraph}{Weak-scaling}
+Weak-scaling differs from strong-scaling by, rather than measuring the decrease in time-to-solution for a problem of fixed size, recording the time-to-solution for a range of problem sizes where the size of the problem scales linearly with the number of processors.
+In this case, perfect efficiency is achieved if the time-to-solution remains fixed.
+If a code has poor weak-scaling, this suggests that there are algorithmic problems regarding how the problem is distributed among processors.
+For example, a parallel algorithm that required frequent all-to-all broadcast messages would have poor weak-scaling because this would increase in cost with the number of processors.
+For a code to have `good' weak-scaling, it would need to have a high efficiency (e.g. 80\%) even when run on very large clusters.
+\end{paragraph}
+
+Taken together, these two metrics provide a relatively good indicator as to the suitability of a code for running on massively parallel computers, which is naturally essential for simulation codes to be effective.
+More informative measures of performance that take into account things such as convergence rates also exist~\cite{changComparativeStudyFinite2018}, but we eschew such measures here because they fall under the remit of the design of the stencil itself, rather than the stencil \textit{iteration}, which is the focus for this work.
+
+\subsubsection{Maximising floating-point throughput}
+\label{sec:background_perf_flops}
 
 \begin{figure}
   \input{./figures/roofline.pgf}
+  % \begin{tikzpicture}
+  %   \begin{loglogaxis}[
+  %     xlabel={xlabel},
+  %     ylabel={ylabel},
+  %   ]
+  %     % left intercept is (height-c)/m
+  %
+  %     % \node (
+  %
+  %     % scalar throughput
+  %     \addplot coordinates {(2, 1) (100, 1)}; 
+  %     % vector throughput
+  %     \addplot coordinates {(2, 8) (100, 8)}; 
+  %
+  %     % cache bandwidth
+  %     \addplot coordinates {(0, 1) ({(8-1)/2}, 8))};
+  %
+  %     % main memory bandwidth
+  %     \addplot coordinates {};
+  %   \end{loglogaxis}
+  % \end{tikzpicture}
 \end{figure}
+
+
 
 \subsection{Optimisations for mesh computations}
 
 % all about data layout
 
+% extruded mesh diagram
+\begin{tikzpicture}[scale=1.5]
+  % start with 2 base triangles (4 vertices)
+  \tkzDefPoint(0,.5){v0v0}
+  \tkzDefPoint(2,0){v1v0}
+  \tkzDefPoint(1.2,1){v2v0} % this one is invisible
+  \tkzDefPoint(3.2,.5){v3v0}
+
+  % now figure out the extruded points (3 columns)
+  \tkzDefShiftPoint[v0v0](90:1){v0v1}
+  \tkzDefShiftPoint[v0v0](90:2){v0v2}
+  \tkzDefShiftPoint[v0v0](90:3){v0v3}
+
+  \tkzDefShiftPoint[v1v0](90:1){v1v1}
+  \tkzDefShiftPoint[v1v0](90:2){v1v2}
+  \tkzDefShiftPoint[v1v0](90:3){v1v3}
+
+  \tkzDefShiftPoint[v2v0](90:1){v2v1}
+  \tkzDefShiftPoint[v2v0](90:2){v2v2}
+  \tkzDefShiftPoint[v2v0](90:3){v2v3}
+
+  \tkzDefShiftPoint[v3v0](90:1){v3v1}
+  \tkzDefShiftPoint[v3v0](90:2){v3v2}
+  \tkzDefShiftPoint[v3v0](90:3){v3v3}
+
+  % base
+  \tkzDrawSegments[red!80,densely dashed,line width=1](v0v0,v2v0 v1v0,v2v0 v2v0,v3v0)
+
+  % draw the vertical lines (v2 is invisible)
+  \tkzDrawSegments[line width=1](v0v0,v0v1 v0v1,v0v2 v0v2,v0v3)
+  \tkzDrawSegments[line width=1](v1v0,v1v1 v1v1,v1v2 v1v2,v1v3)
+  \tkzDrawSegments[line width=1](v3v0,v3v1 v3v1,v3v2 v3v2,v3v3)
+
+  % horizontal (bottom is red)
+  \tkzDrawSegments[red!80,line width=1](v0v0,v1v0 v1v0,v3v0)
+  \tkzDrawSegments[line width=1](v0v1,v1v1 v1v1,v3v1)
+  \tkzDrawSegments[line width=1](v0v2,v1v2 v1v2,v3v2)
+  \tkzDrawSegments[line width=1](v0v3,v1v3 v1v3,v3v3)
+
+  % top
+  \tkzDrawSegments[line width=1](v0v3,v2v3 v2v3,v3v3)
+  \tkzDrawSegment[line width=1](v1v3,v2v3)
+
+  \tkzDrawPoints[red!80](v0v0,v1v0,v2v0,v3v0)
+  \tkzDrawPoints(v0v1,v0v2,v0v3,v1v1,v1v2,v1v3,v2v3,v3v1,v3v2,v3v3)
+\end{tikzpicture}
+
 % extrusion only matters 20% (or working set)
+
+% use halos/ghost cells for good parallel efficiency
