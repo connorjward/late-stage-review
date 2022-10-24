@@ -161,243 +161,6 @@ Another example useful for finite volume calculations: ``what are my neighbourin
 One can also do clever patch things.
 
 
-\subsubsection{Orienting degrees-of-freedom}
-
-One significant challenge stencil applications face when applied to \glspl{pde} is on agreeing on a consistent orientation of the \glspl{dof} for shared entities.
-% introduce ``reference'' as a term
-%Note that we use the term ``reference'' here to mean ``the canonical arrangement of \glspl{dof} that is expected by the local kernel''.
-
-To demonstrate the issue, consider the \gls{dof} arrangements shown in Figure~\ref{fig:orient}.
-Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_vector_ref} show the reference \gls{dof} arrangements for an arbitrary space on triangles, with scalar or vector \glspl{dof} on the edges respectively.
-Likewise, Figures~\ref{fig:orient_basic_flip} and~\ref{fig:orient_vector_flip} show the resulting \gls{dof} arrangements for the same spaces but with one of the edges flipped.
-In either flipped case, were the \glspl{dof} to be naively packed into a local temporary and passed to a local kernel, the results would be incorrect as the \glspl{dof} would be passed in in the wrong order.
-
-For many cell types, the orientation problem can be avoided through renumbering the mesh such that adjacent entities agree on the orientations of any shared facets or edges.
-In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyMathrmdiv2010}, as well as quadrilaterals and (some) hexes~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
-\dots
-Hexes are annoying because they cannot be oriented in parallel and some meshes (e.g. Mo(..)bius strip) are not orientable.
-But. We want them for tokamaks (cite).
-
-However, for more complicated cell types with more complex symmetry groups (e.g. hexes or pyramids), the issue of orientation cannot be avoided by a simple renumbering and \gls{dof} transformations are needed to be able to collect the \glspl{dof} in a suitable reference order.
-For scalar-valued \glspl{dof}, one simply needs to permute the order in which \glspl{dof} are loaded into the local temporary.
-This can easily be done in advance and be encapsulated by, for example, a PyOP2 \mintinline{python}{Map}.
-This approach is insufficient for vector-valued \glspl{dof} though as components may still be pointing in the wrong direction.
-This is demonstrated in Figure~\ref{fig:orient_vector_flip} where one can see that simply permuting the \glspl{dof} on the flipped edge would not be enough.
-One also needs to multiply the values by $-1$ in order to get the vectors pointing in the right direction.
-The situation is further complicated in 3D where one could have two tangent vectors per \gls{dof} on each face, requiring the application of a $2\times2$ rotation matrix to reach consensus.
-
-The general solution to orienting \glspl{dof} for stencil application is therefore as follows:
-First, one loads the (permuted) \glspl{dof} associated with a particular entity, along with a bitarray encoding the entity's orientation.
-Then, one can apply appropriate transformations to the loaded \glspl{dof} such that they can be correctly passed through to the local kernel.
-This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{}.
-However, to our knowledge, this is not performed by any existing stencil library.
-
-\begin{figure}
-  \centering
-    \centering
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v1}
-        \tkzDefShiftPoint[v0](60:4){v2}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v1,v2)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_basic_ref}
-    \end{subfigure}
-    %
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v2}
-        \tkzDefShiftPoint[v0](60:4){v1}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v1,v2)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_basic_flip}
-    \end{subfigure}
-
-    \vspace{1em}
-
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v1}
-        \tkzDefShiftPoint[v0](60:4){v2}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v1,v2)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        % arrows
-        \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
-        \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
-        \tkzDefShiftPoint[e1d0](30:.6){e1d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
-        \tkzDefShiftPoint[e1d1](30:.6){e1d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
-        \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
-        \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
-
-        % filled bits
-        \filldraw [draw=black,fill=red!80,line width=.7] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$a$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$b$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_vector_ref}
-    \end{subfigure}
-    %
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v1}
-        \tkzDefShiftPoint[v0](60:4){v2}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v2,v1)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        % arrows
-        \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
-        \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
-        \tkzDefShiftPoint[e1d0](210:.6){e1d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
-        \tkzDefShiftPoint[e1d1](210:.6){e1d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
-        \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
-        \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
-
-        \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$b$};
-        \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$a$};
-        \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_vector_flip}
-    \end{subfigure}
-
-    \caption{}
-    \label{fig:orient}
-\end{figure}
-
 \subsection{Methods for performance optimisation}
 
 In this section we review some of the common bottlenecks in massively parallel simulation codes, and describe some general ways for quantifying and improving performance.
@@ -462,90 +225,213 @@ For example, a parallel algorithm that required frequent all-to-all broadcast me
 For a code to have `good' weak-scaling, it would need to have a high efficiency (e.g. 80\%) even when run on very large clusters.
 \end{paragraph}
 
+\vspace{1em}
+
 Taken together, these two metrics provide a relatively good indicator as to the suitability of a code for running on massively parallel computers, which is naturally essential for simulation codes to be effective.
 More informative measures of performance that take into account things such as convergence rates also exist~\cite{changComparativeStudyFinite2018}, but we eschew such measures here because they fall under the remit of the design of the stencil itself, rather than the stencil \textit{iteration}, which is the focus for this work.
 
 \subsubsection{Maximising floating-point throughput}
 \label{sec:background_perf_flops}
 
+Once we have a code that scales well, the next step is to optimise performance for a single process.
+In order to do this, one should first profile the code and compare its performance to the theoretical limits of the hardware.
+Doing this provides both a good termination criterion for the optimisation process (you can't go faster than the hardware!), and also guides the developer as to what the performance bottlenecks might be and thus which optimisations might be usefully applied.
+
+As a first step, one should profile the performance-critical kernels in the application to determine their floating-point throughput (the higher the better) and their \gls{ai}.
+Arithmetic intensity is a ratio of the number of \glspl{flop} performed per byte of memory accessed.
+To simplify, a kernel with low arithmetic intensity reads a lot of data from memory but the processor does not need to perform many calculations, and a kernel with high arithmetic intensity performs a lot of calculations per byte of memory accessed.
+An example of a kernel with low \gls{ai} would be \mintinline{c}{z[i] = x[i] + y[i];}; 1 \gls{flop} (addition) is performed for every 3 data accesses (2 reads and 1 write).
+Assuming that \mintinline{c}{x}, \mintinline{c}{y} and \mintinline{c}{z} are 8 bytes each, this gives this operation an \gls{ai} of $1/24$.
+In contrast, a kernel with a high \gls{ai} might include operations of the form \mintinline{c}{y[i] = sqrt(x[i]);}.
+Operations such as square roots and division typically require a large number of \glspl{flop}, increasing the \gls{ai}.
+
+The key insight that \gls{ai} gives us is that some applications are limited by the rate at which \textit{memory is accessed}, and some applications are limited by the rate at which \textit{chips perform \glspl{flop}}.
+These are typically referred to as \textit{memory-bound} and \textit{compute-bound} respectively.
+It is worthwhile to note that there is trend in modern chips for floating-point throughput to increase at a faster rate than memory bandwidth, and so more and more codes are becoming memory-bound.
+
 \begin{figure}
-  \input{./figures/roofline.pgf}
-  % \begin{tikzpicture}
-  %   \begin{loglogaxis}[
-  %     xlabel={xlabel},
-  %     ylabel={ylabel},
-  %   ]
-  %     % left intercept is (height-c)/m
-  %
-  %     % \node (
-  %
-  %     % scalar throughput
-  %     \addplot coordinates {(2, 1) (100, 1)}; 
-  %     % vector throughput
-  %     \addplot coordinates {(2, 8) (100, 8)}; 
-  %
-  %     % cache bandwidth
-  %     \addplot coordinates {(0, 1) ({(8-1)/2}, 8))};
-  %
-  %     % main memory bandwidth
-  %     \addplot coordinates {};
-  %   \end{loglogaxis}
-  % \end{tikzpicture}
+  \input{figures/roofline.pgf}
+  \caption{
+    Simplified roofline model.
+    The points A, B and C represent computational kernels with different performance characteristics.
+  }
+  \label{fig:roofline}
 \end{figure}
 
+To determine which regime a kernel belongs to, it can be added to a \textit{roofline} plot similar to the one shown in Figure~\ref{fig:roofline}~\cite{williamsRooflineInsightfulVisual2009}.
+In a roofline plot, the performance limits of the machine are indicated by the solid lines.
+To the right, where \gls{ai} is high, throughput is limited by the speed of the chip and so the line is flat.
+To the left, though, the \gls{ai} is low and so throughput is dependent upon the rate at which data can be supplied to the chip.
+The plot shows two lines for the possible bandwidths to reflect the fact that different problems will have different working-set sizes and so the bandwidth needs to match the appropriate level in the memory hierarchy.
+Similarly, two lines are shown for peak throughput since vectorisation will usually increase the throughput by a factor of 4 or 8.
 
+Looking at Figure~\ref{fig:roofline}, we can see how plotting kernels on this can guide the optimisation effort.
+To use the example points (shown in red):
 
-\subsection{Optimisations for mesh computations}
+\begin{itemize}
+  \item
+    Kernel \textit{A} has low \gls{ai} and so the maximum achievable throughput is unfortunately well below theoretical peak.
+    It lies fairly close to the peak if streaming data from main memory and so possible optimisations include:
+    Reducing the working-set size to fit within cache memory - for example via tiling - making the new bottleneck the cost of streaming data from the cache rather than main memory.
+    Reducing the volume of data that needs to be streamed; this would increase the \gls{ai}.
 
-% all about data layout
+  \item
+    Kernel \textit{B} has high \gls{ai} and so should be able to achieve close to peak performance.
+    However, it currently sits well below the theoretical limits and is therefore an excellent candidate for further optimisation.
+    Since the code cannot be memory-bound, optimisation efforts should focus on compute-type optimisations such as loop unrolling, rather than data ones.
 
-% extruded mesh diagram
-\begin{tikzpicture}[scale=1.5]
-  % start with 2 base triangles (4 vertices)
-  \tkzDefPoint(0,.5){v0v0}
-  \tkzDefPoint(2,0){v1v0}
-  \tkzDefPoint(1.2,1){v2v0} % this one is invisible
-  \tkzDefPoint(3.2,.5){v3v0}
+  \item
+    Lastly, kernel \textit{C} already achieves very close to peak throughput.
+    It is not a good candidate for optimisation since the potential for performance improvements is low.
+\end{itemize}
 
-  % now figure out the extruded points (3 columns)
-  \tkzDefShiftPoint[v0v0](90:1){v0v1}
-  \tkzDefShiftPoint[v0v0](90:2){v0v2}
-  \tkzDefShiftPoint[v0v0](90:3){v0v3}
+\subsection{Optimisations for stencil computations}
 
-  \tkzDefShiftPoint[v1v0](90:1){v1v1}
-  \tkzDefShiftPoint[v1v0](90:2){v1v2}
-  \tkzDefShiftPoint[v1v0](90:3){v1v3}
+Depending on the local kernel, stencil application can be either compute- or memory-bound.
+If the kernel has high \gls{ai}, then the iteration will be compute-bound and throughput-oriented optimisations will be worthwhile.
+By contrast, if the kernel has low \gls{ai}, then it will be memory-bound and data movement optimisations will be the ones to yield results.
+The key thing to observe is that, if compute-bound, the local stencil is doing a lot of work and hence all of the `hot loops' that drive performance will be found inside it.
+On the other hand, if we are memory-bound, then most of the time will be spent inside the packing and unpacking code of the stencil language.
+Therefore, in general, optimisations for stencil languages should focus on improving memory accesses.
 
-  \tkzDefShiftPoint[v2v0](90:1){v2v1}
-  \tkzDefShiftPoint[v2v0](90:2){v2v2}
-  \tkzDefShiftPoint[v2v0](90:3){v2v3}
+We remark briefly that one notable exception to this is vectorisation.
+One may wish to apply \textit{inter-element} vectorisation at the level of the stencil language, that is, to loop over multiple entities in the iteration set (e.g. cells) at the same time, one per vector lane.
+Such an approach has been implemented in (a branch of) \pyop2, and demonstrated to be performant~\cite{sunStudyVectorizationMatrixfree2020}.
 
-  \tkzDefShiftPoint[v3v0](90:1){v3v1}
-  \tkzDefShiftPoint[v3v0](90:2){v3v2}
-  \tkzDefShiftPoint[v3v0](90:3){v3v3}
+\subsubsection{Locality optimisations}
 
-  % base
-  \tkzDrawSegments[red!80,densely dashed,line width=1](v0v0,v2v0 v1v0,v2v0 v2v0,v3v0)
+From the roofline in Figure~\ref{fig:roofline} one can see that, for a memory-bound code (low \gls{ai}), dramatic speedups may be achieved by changing the level in the memory hierarchy at which the kernel operates.
+In this simplified figure this corresponds to being limited by ``Peak cache bandwidth'' instead of ``Peak main memory bandwidth''.
+In practice there are several layers of cache and this represents a simplified picture.
+Cache levels have a small capacity, and so in order to exploit the faster data accesses the working-set size of the problem must be reduced to fit inside a particular cache level.
 
-  % draw the vertical lines (v2 is invisible)
-  \tkzDrawSegments[line width=1](v0v0,v0v1 v0v1,v0v2 v0v2,v0v3)
-  \tkzDrawSegments[line width=1](v1v0,v1v1 v1v1,v1v2 v1v2,v1v3)
-  \tkzDrawSegments[line width=1](v3v0,v3v1 v3v1,v3v2 v3v2,v3v3)
+Whenever a piece of data is loaded into the cache, the hardware attempts to take advantage of the \textit{spatial locality} of the data and loads in adjacent entries as a \textit{cache line}, under the assumption that these will be required in subsequent computations.
+The hardware also makes the reasonable assumption of \textit{temporal locality}, that data loaded into the cache may be used multiple times, and so cache lines persist and only the least recently used is evicted and replaced.
 
-  % horizontal (bottom is red)
-  \tkzDrawSegments[red!80,line width=1](v0v0,v1v0 v1v0,v3v0)
-  \tkzDrawSegments[line width=1](v0v1,v1v1 v1v1,v3v1)
-  \tkzDrawSegments[line width=1](v0v2,v1v2 v1v2,v3v2)
-  \tkzDrawSegments[line width=1](v0v3,v1v3 v1v3,v3v3)
+To demonstrate the impact of these hardware optimisations, consider an example where the data layout is so poor that only one entry from each cache line is ever used and where data is never reused.
+A cache line is typically 64 bytes so for double precision floats (8 bytes) this increases the \textit{effective working-set size} by a factor of 8.
+This difference can cause us to exceed the working-set restrictions for a particular cache level and restrict the effective memory bandwidth to the lower level in the memory hierarchy, a difference that frequently incurs an order-of-magnitude hit to performance.
 
-  % top
-  \tkzDrawSegments[line width=1](v0v3,v2v3 v2v3,v3v3)
-  \tkzDrawSegment[line width=1](v1v3,v2v3)
+To avoid this, one must make \textit{data locality} optimisations, that is, optimisations that ensure greater utilisation of the additional entries loaded per cache line as well as trying to avoid repeated loads of the same data if repeated accesses are required.
 
-  \tkzDrawPoints[red!80](v0v0,v1v0,v2v0,v3v0)
-  \tkzDrawPoints(v0v1,v0v2,v0v3,v1v1,v1v2,v1v3,v2v3,v3v1,v3v2,v3v3)
-\end{tikzpicture}
+Common data locality optimisations for stencil-like applications include: \textit{tiling}, where the iteration domain is subdivided into small \textit{tiles} to exploit data reuse between the faces of stencils; and \textit{kernel fusion}, where separate stencils are executed in a single loop to take advantage of the data shared between them.  % TODO: Add citations
+\textit{Time tiling} is a combination of the two and has been shown to lead to moderate improvements in performance for unstructured mesh stencils~\cite{luporiniAutomatedTilingUnstructured2019}.
 
-% extrusion only matters 20% (or working set)
+For unstructured meshes, a common optimisation is to renumber the mesh entities such that all entities in the stencil are `close', hence making use of spatial locality.
+It also helps with temporal locality since \glspl{dof} on faces will be reused between iterations.
+The reverse Cuthill-McKee algorithm is a common `cache-oblivious' way of reordering an unstructured mesh~\cite{cuthillReducingBandwidthSparse1969,langeEfficientMeshManagement2016}.
 
-% use halos/ghost cells for good parallel efficiency
+\subsubsection{Mesh structure}
+
+As well as reordering data to reduce the effective working-set size, one can sometimes exploit the structure of the mesh itself to reduce the \textit{actual} working-set size.
+
+Meshes can (usually) be classified into one of two types: \textit{structured} or \textit{unstructured}.
+The fundamental difference between the two is that structured grids can determine their neighbouring entities (i.e. perform the queries from Figure~\ref{fig:plex_restrictions}) via mathematical relations.
+This means that data accesses have the form \mintinline{c}{x[f(i)]}.
+By contrast, unstructured meshes have no structure they can exploit to determine their neighbours and hence need to tabulate these adjacency relations, resulting in accesses of the form \mintinline{c}{x[map[i]]}.
+
+Structured meshes are known to have faster access to data than unstructured meshes.
+This is for the following reasons:
+
+\begin{itemize}
+  \item
+    \textit{Beneficial data layout} \\
+    Since the data layout of a structured mesh is completely regular, we get a higher rate of cache hits as we iterate over the mesh.
+    This is because there will be data reuse on the face where the two cells meet and also the hardware prefetcher will load cache lines for us.
+
+  \item
+    \textit{Less memory is required per data access} \\
+    Since lookup tables are not required for locating data, the total volume of data required from main memory is reduced.
+
+  \item
+    \textit{Smaller working-set size} \\
+    We need less data in order to compute a single stencil.
+    If this volume exceeds the size of a particular level in the cache hierarchy then the next one down needs to get used and this will have a bandwidth that is orders-of-magnitude slower.
+    Note that this is unlikely to be much of a problem.
+
+  \item
+    \textit{Aids software prefetching} \\
+    If the compiler can see that data is accessed in a particular pattern, it can emit prefetch instructions such that data will already be in the cache.
+\end{itemize}
+
+\begin{figure}
+  \centering
+  \begin{tikzpicture}[scale=1.5]
+    % start with 2 base triangles (4 vertices)
+    \tkzDefPoint(0,.5){v0v0}
+    \tkzDefPoint(2,0){v1v0}
+    \tkzDefPoint(1.2,1){v2v0} % this one is invisible
+    \tkzDefPoint(3.2,.5){v3v0}
+
+    % now figure out the extruded points (3 columns)
+    \tkzDefShiftPoint[v0v0](90:1){v0v1}
+    \tkzDefShiftPoint[v0v0](90:2){v0v2}
+    \tkzDefShiftPoint[v0v0](90:3){v0v3}
+
+    \tkzDefShiftPoint[v1v0](90:1){v1v1}
+    \tkzDefShiftPoint[v1v0](90:2){v1v2}
+    \tkzDefShiftPoint[v1v0](90:3){v1v3}
+
+    \tkzDefShiftPoint[v2v0](90:1){v2v1}
+    \tkzDefShiftPoint[v2v0](90:2){v2v2}
+    \tkzDefShiftPoint[v2v0](90:3){v2v3}
+
+    \tkzDefShiftPoint[v3v0](90:1){v3v1}
+    \tkzDefShiftPoint[v3v0](90:2){v3v2}
+    \tkzDefShiftPoint[v3v0](90:3){v3v3}
+
+    % base
+    \tkzDrawSegments[red!80,densely dashed,line width=1](v0v0,v2v0 v1v0,v2v0 v2v0,v3v0)
+
+    % draw the vertical lines (v2 is invisible)
+    \tkzDrawSegments[line width=1](v0v0,v0v1 v0v1,v0v2 v0v2,v0v3)
+    \tkzDrawSegments[line width=1](v1v0,v1v1 v1v1,v1v2 v1v2,v1v3)
+    \tkzDrawSegments[line width=1](v3v0,v3v1 v3v1,v3v2 v3v2,v3v3)
+
+    % horizontal (bottom is red)
+    \tkzDrawSegments[red!80,line width=1](v0v0,v1v0 v1v0,v3v0)
+    \tkzDrawSegments[line width=1](v0v1,v1v1 v1v1,v3v1)
+    \tkzDrawSegments[line width=1](v0v2,v1v2 v1v2,v3v2)
+    \tkzDrawSegments[line width=1](v0v3,v1v3 v1v3,v3v3)
+
+    % top
+    \tkzDrawSegments[line width=1](v0v3,v2v3 v2v3,v3v3)
+    \tkzDrawSegment[line width=1](v1v3,v2v3)
+
+    \tkzDrawPoints[red!80](v0v0,v1v0,v2v0,v3v0)
+    \tkzDrawPoints(v0v1,v0v2,v0v3,v1v1,v1v2,v1v3,v2v3,v3v1,v3v2,v3v3)
+  \end{tikzpicture}
+  \caption{}
+  \label{fig:extruded}
+\end{figure}
+
+These benefits have motivated the design of \textit{partially-structured} meshes, where only portions of the mesh are structured.
+Examples include: block-structured meshes, regularly refined meshes and extruded.
+
+An example of a partially-structured mesh is shown in Figure~\ref{fig:extruded}.
+Users start with an unstructured `base' mesh - here two triangles - that is \textit{extruded} to produce layers of triangular prisms.
+The mesh has `partial structure' in that the data layout up the columns is regular, but addressing the base mesh is not.
+Such meshes are useful for simulations where the aspect ratio is very uneven.
+For example modelling the `thick' shell of the atmosphere or ocean.
+
+Though exploiting partial structure of meshes does speed up codes, we would like to emphasise that, in fact, the differences in performance between structured and unstructured meshes is not actually that great.
+The reason for this is that the difference in data volume between the meshes usually at most 25\%.
+To demonstrate, consider a stencil code looping over the cells of a structured mesh where, for each cell, there are $p$ points accessed and $d$ \glspl{dof} per point.
+The total (minimum) amount of memory accessed is then given by
+\begin{equation*}
+  D_S = n_c \cdot p \cdot d \cdot 8 \cdot 2,
+\end{equation*}
+where $n_c$ is the number of cells, the 8 comes from the fact that each \gls{dof} is 8 bytes, and the 2 is assuming that we read from one array and write to another.
+In the unstructured case, the data volume is the same as before plus the size of the indirection map:
+\begin{equation*}
+  D_U = D_S + n_c \cdot p \cdot 4.
+\end{equation*}
+A factor of 4 is required instead of 8 because the maps are typically 4 byte integers.
+As a fraction of the structured case, the extra data required by the unstructured mesh is therefore given by
+\begin{equation*}
+  \frac{D_U - D_S}{D_S} = \frac{1}{4d},
+\end{equation*}
+which, since $d \geq 1$, bounds the extra data volume at 25\% of the structured case.
+
+Taking into consideration that this represents a reasonable worst-case example - stencils frequently admit more than two data structures and often have more than one \gls{dof} per point - the performance benefits of direct addressing are not very dramatic compared with the possible order-of-magnitude improvements that one can get from a correct data ordering and iteration prescription.
+Though we do address adding support for partially-structured meshes in Section~\ref{sec:future_partialstructure}, initial work on \pyop3 targets considerations of data layout instead.

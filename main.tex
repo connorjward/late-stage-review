@@ -5,21 +5,25 @@
   \addbibresource{bibliography.bib}
 \usepackage[acronym,nomain]{glossaries}
   \setacronymstyle{long-short}
-  \newacronym[shortplural={DoFs},longplural={degrees-of-freedom}]{dof}{DoF}{degree-of-freedom}
+  \newacronym[shortplural={DoFs},longplural={degrees-of-freedom}]
+    {dof}{DoF}{degree-of-freedom}
   \newacronym{fem}{FEM}{finite element method}
   \newacronym{pde}{PDE}{partial differential equation}
-  \newacronym{flops}{FLOPs}{floating point operations per second}
+  \newacronym[shortplural={FLOPs},longplural={floating-point operations}]
+    {flop}{FLOP}{floating-point operation}
+  \newacronym{ai}{AI}{arithmetic intensity}
   \newacronym{dag}{DAG}{directed acyclic graph}
   \newacronym{poset}{poset}{partially-ordered set}
 \usepackage{graphicx}
   \graphicspath{{figures}}
 \usepackage{minted}
 \usepackage{subcaption}
+\usepackage{amsmath}
 \usepackage{pgf}
 \usepackage{pgfplots}
 \usepackage{tikz}
 \usepackage{tkz-euclide}
-  \usetikzlibrary{arrows,calc,graphs,graphdrawing,positioning}
+  \usetikzlibrary{arrows,calc,graphs,graphdrawing,positioning,tikzmark}
   \usegdlibrary{trees}
   \pgfdeclarelayer{background}
   \pgfsetlayers{background,main}

@@ -137,25 +137,25 @@ def main(
     y = 1/20
     ax.scatter([x], [y], color="red")
     ax.annotate(
-        "A", (x, y), (7, -7), textcoords="offset points",
+        "A", (x, y), (6, -6), textcoords="offset points",
         verticalalignment="center", horizontalalignment="center"
     )
 
     # plot B
-    x = 1
+    x = 0.7
     y = 1/8
     ax.scatter([x], [y], color="red")
     ax.annotate(
-        "B", (x, y), (7, -7), textcoords="offset points",
+        "B", (x, y), (6, -6), textcoords="offset points",
         verticalalignment="center", horizontalalignment="center"
     )
 
     # plot C
-    x = 5
-    y = 9
+    x = 4
+    y = 8
     ax.scatter([x], [y], color="red")
     ax.annotate(
-        "C", (x, y), (7, -7), textcoords="offset points",
+        "C", (x, y), (6, -6), textcoords="offset points",
         verticalalignment="center", horizontalalignment="center"
     )
 
