@@ -54,6 +54,171 @@ As a simple example, consider the data layout for a typically unstructured mesh 
 % clever layout means we can exchange core, then owned, interleaving communication
 % PETSc Mat for parallel matrices
 
+\begin{figure}
+  \begin{tikzpicture}
+    % define styles
+    \tkzSetUpStyle[draw=white,line width=5]{cell}
+    \tkzSetUpStyle[line width=2,shorten >=.15cm,shorten <=.15cm]{edge}
+
+    \tkzSetUpStyle[cell,fill=red!50]{p1cell}
+    \tkzSetUpStyle[edge,draw=red!80]{p1edge}
+    \tkzSetUpStyle[draw=red!80,fill=red!80]{p1vert}
+    \tkzSetUpStyle[cell,fill=blue!50]{p2cell}
+    \tkzSetUpStyle[edge,draw=blue!80]{p2edge}
+    \tkzSetUpStyle[draw=blue!80,fill=blue!80]{p2vert}
+
+    \tkzSetUpStyle[densely dashed,shorten >=.1cm,shorten <=.1cm,line width=.5]{connector}
+
+    % process 1
+    \begin{scope}
+      % define nodes
+      \tkzDefPoint(0,0){p1v0}
+      \tkzDefPoint(.1,1.1){p1v1}
+      \tkzDefPoint(0,1.9){p1v2}
+      \tkzDefPoint(.2,3.1){p1v3}
+      \tkzDefPoint(1.1,0){p1v4}
+      \tkzDefPoint(1,1){p1v5}
+      \tkzDefPoint(.9,2){p1v6}
+      \tkzDefPoint(1,3){p1v7}
+      \tkzDefPoint(2,0){p1v8}
+      \tkzDefPoint(2.1,1){p1v9}
+      \tkzDefPoint(2,2.1){p1v10}
+      \tkzDefPoint(1.9,3.2){p1v11}
+      \tkzDefPoint(3,-.1){p1v12}
+      \tkzDefPoint(3.1,.9){p1v13}
+      \tkzDefPoint(3,2.1){p1v14}
+      \tkzDefPoint(3.1,3.1){p1v15}
+
+      % cells
+      \tkzDrawPolygon[p1cell](p1v0,p1v1,p1v4)
+      \tkzDrawPolygon[p1cell](p1v1,p1v4,p1v5)
+      \tkzDrawPolygon[p1cell](p1v1,p1v5,p1v6)
+      \tkzDrawPolygon[p1cell](p1v1,p1v2,p1v6)
+      \tkzDrawPolygon[p1cell](p1v2,p1v3,p1v6)
+      \tkzDrawPolygon[p1cell](p1v3,p1v6,p1v7)
+      \tkzDrawPolygon[p1cell](p1v4,p1v8,p1v9)
+      \tkzDrawPolygon[p1cell](p1v4,p1v5,p1v9)
+      \tkzDrawPolygon[p1cell](p1v5,p1v9,p1v10)
+      \tkzDrawPolygon[p1cell](p1v5,p1v6,p1v10)
+      \tkzDrawPolygon[p1cell](p1v6,p1v7,p1v10)
+      \tkzDrawPolygon[p1cell](p1v7,p1v10,p1v11)
+      \tkzDrawPolygon[p1cell](p1v8,p1v9,p1v12)
+      \tkzDrawPolygon[p2cell](p1v9,p1v12,p1v13)
+      \tkzDrawPolygon[p2cell](p1v9,p1v13,p1v14)
+      \tkzDrawPolygon[p1cell](p1v9,p1v10,p1v14)
+      \tkzDrawPolygon[p2cell](p1v10,p1v14,p1v15)
+      \tkzDrawPolygon[p1cell](p1v10,p1v11,p1v15)
+
+      % edges
+      \tkzDrawSegments[p1edge](p1v0,p1v1 p1v1,p1v2 p1v2,p1v3)
+      \tkzDrawSegments[p1edge](p1v4,p1v5 p1v5,p1v6 p1v6,p1v7)
+      \tkzDrawSegments[p1edge](p1v8,p1v9 p1v9,p1v10 p1v10,p1v11)
+      \tkzDrawSegments[p2edge](p1v12,p1v13 p1v13,p1v14 p1v14,p1v15)
+
+      \tkzDrawSegments[p1edge](p1v0,p1v4 p1v4,p1v8)
+      \tkzDrawSegments[p1edge](p1v1,p1v5 p1v5,p1v9)
+      \tkzDrawSegments[p1edge](p1v2,p1v6 p1v6,p1v10)
+      \tkzDrawSegments[p1edge](p1v3,p1v7 p1v7,p1v11 p1v11,p1v15)
+      \tkzDrawSegments[p2edge](p1v8,p1v12 p1v9,p1v13 p1v10,p1v14)
+
+      \tkzDrawSegments[p1edge](p1v1,p1v4 p1v1,p1v6 p1v3,p1v6)
+      \tkzDrawSegments[p1edge](p1v4,p1v9 p1v5,p1v10 p1v7,p1v10)
+      \tkzDrawSegments[p2edge](p1v9,p1v12 p1v9,p1v14 p1v10,p1v15)  % mimics process 2
+
+      % vertices
+      \tkzDrawPoints[p1vert](p1v0,p1v1,p1v2,p1v3,p1v4,p1v5,p1v6,p1v7,p1v8,p1v9,p1v10,p1v11)
+      \tkzDrawPoints[p2vert](p1v12,p1v13,p1v14,p1v15)
+
+      % debugging
+      % \tkzLabelPoints[anchor=south,font=\tiny](p1v0,p1v1,p1v2,p1v3,p1v4,p1v5,p1v6,p1v7,p1v8,p1v9,p1v10,p1v11,p1v12,p1v13,p1v14,p1v15)
+
+      % draw a sample patch
+      % source: https://tex.stackexchange.com/questions/356564/macro-for-rounded-polygon-around-some-nodes
+      % \def\drawpatch#1,#2;{
+        % \begin{pgfonlayer}{background}
+          % \filldraw[line width=25,join=round](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
+          % \filldraw[line width=24,join=round,fill=black!20,fill opacity=.2](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
+        % \end{pgfonlayer}
+      % }
+      % \drawpatch p1v5,p1v7,p1v15,p1v13;
+    \end{scope}
+
+    % process 2
+    \begin{scope}[xshift=5cm]
+      % define nodes
+      \tkzDefPoint(0,0){p2v0}
+      \tkzDefPoint(0,1){p2v1}
+      \tkzDefPoint(0,2){p2v2}
+      \tkzDefPoint(0,3){p2v3}
+      \tkzDefPoint(1,0){p2v4}
+      \tkzDefPoint(1,1){p2v5}
+      \tkzDefPoint(1,2){p2v6}
+      \tkzDefPoint(1,3){p2v7}
+      \tkzDefPoint(2,0){p2v8}
+      \tkzDefPoint(2,1){p2v9}
+      \tkzDefPoint(2,2){p2v10}
+      \tkzDefPoint(2,3){p2v11}
+      \tkzDefPoint(3,0){p2v12}
+      \tkzDefPoint(3,1){p2v13}
+      \tkzDefPoint(3,2){p2v14}
+      \tkzDefPoint(3,3){p2v15}
+
+      % cells
+      \tkzDrawPolygon[p1cell](p2v0,p2v1,p2v4)
+      \tkzDrawPolygon[p2cell](p2v1,p2v4,p2v5)
+      \tkzDrawPolygon[p2cell](p2v1,p2v5,p2v6)
+      \tkzDrawPolygon[p1cell](p2v1,p2v2,p2v6)
+      \tkzDrawPolygon[p2cell](p2v2,p2v6,p2v7)
+      \tkzDrawPolygon[p1cell](p2v2,p2v3,p2v7)
+      \tkzDrawPolygon[p2cell](p2v4,p2v5,p2v8)
+      \tkzDrawPolygon[p2cell](p2v5,p2v8,p2v9)
+      \tkzDrawPolygon[p2cell](p2v5,p2v6,p2v9)
+      \tkzDrawPolygon[p2cell](p2v6,p2v9,p2v10)
+      \tkzDrawPolygon[p2cell](p2v6,p2v10,p2v11)
+      \tkzDrawPolygon[p2cell](p2v6,p2v7,p2v11)
+      \tkzDrawPolygon[p2cell](p2v8,p2v9,p2v12)
+      \tkzDrawPolygon[p2cell](p2v9,p2v12,p2v13)
+      \tkzDrawPolygon[p2cell](p2v9,p2v10,p2v13)
+      \tkzDrawPolygon[p2cell](p2v10,p2v13,p2v14)
+      \tkzDrawPolygon[p2cell](p2v10,p2v14,p2v15)
+      \tkzDrawPolygon[p2cell](p2v10,p2v11,p2v15)
+
+      % edges
+      \tkzDrawSegments[p1edge](p2v0,p2v1 p2v1,p2v2 p2v2,p2v3)
+      \tkzDrawSegments[p2edge](p2v4,p2v5 p2v5,p2v6 p2v6,p2v7)
+      \tkzDrawSegments[p2edge](p2v8,p2v9 p2v9,p2v10 p2v10,p2v11)
+      \tkzDrawSegments[p2edge](p2v12,p2v13 p2v13,p2v14 p2v14,p2v15)
+
+      \tkzDrawSegments[p2edge](p2v0,p2v4 p2v4,p2v8 p2v8,p2v12)
+      \tkzDrawSegments[p2edge](p2v1,p2v5 p2v5,p2v9 p2v9,p2v13)
+      \tkzDrawSegments[p2edge](p2v2,p2v6 p2v6,p2v10 p2v10,p2v14)
+      \tkzDrawSegments[p2edge](p2v7,p2v11 p2v11,p2v15)
+      \tkzDrawSegments[p1edge](p2v3,p2v7)
+
+      \tkzDrawSegments[p2edge](p2v1,p2v4 p2v1,p2v6 p2v2,p2v7)
+      \tkzDrawSegments[p2edge](p2v5,p2v8)
+      \tkzDrawSegments[p2edge](p2v6,p2v9)
+      \tkzDrawSegments[p2edge](p2v6,p2v11)
+      \tkzDrawSegments[p2edge](p2v9,p2v12 p2v10,p2v13 p2v10,p2v15)
+
+      % vertices
+      \tkzDrawPoints[p1vert](p2v0,p2v1,p2v2,p2v3)
+      \tkzDrawPoints[p2vert](p2v4,p2v5,p2v6,p2v7,p2v8,p2v9,p2v10,p2v11,p2v12,p2v13,p2v14,p2v15)
+
+      % debugging
+      % \tkzLabelPoints[anchor=south,font=\tiny](p2v0,p2v1,p2v2,p2v3,p2v4,p2v5,p2v6,p2v7,p2v8,p2v9,p2v10,p2v11,p2v12,p2v13,p2v14,p2v15)
+    \end{scope}
+
+    % connect (sample of) equivalent points
+    \draw [-{stealth},connector] (p1v11) to [bend left=45] (p2v3);
+    \draw [{stealth}-,connector] (p1v15) to [bend left=45] (p2v7);
+    \draw [-{stealth},connector] (p1v8) to [bend right=45] (p2v0);
+    \draw [{stealth}-,connector] (p1v12) to [bend right=45] (p2v4);
+  \end{tikzpicture}
+  \caption{}
+  \label{fig:halos}
+\end{figure}
+
 % PETSc is scalable (cite?)
 % PyOP2 (via Firedrake assembly) has good weak scalability
 

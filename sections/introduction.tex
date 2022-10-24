@@ -27,7 +27,7 @@ In other words, are there reasonable use-cases where this traversal constitutes 
 
 To begin, the wall-clock time of a program, assuming good algorithmic/parallel design, is usually limited by some combination of the maximum throughput of the processor and the cost of moving data to and from said processor.
 Given that the principle role for \projectname is to marshall data for the kernel we focus on codes where the cost of moving data is the bottleneck.
-Any effort on minimising the number of \gls{flops} would be wasted as such optimisations would only be useful inside the `hot' loops of the kernel.
+Any effort on minimising the number of \glspl{flop} would be wasted as such optimisations would only be useful inside the `hot' loops of the kernel.
 Also, hardware developments have seen a general trend where computing power is increasing at a more rapid rate than memory access speed.
 As such, the bottleneck in an increasing number of codes is going to be the memory accesses.
 
