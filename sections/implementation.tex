@@ -1,56 +1,355 @@
 \section{Implementation}
+\label{sec:impl}
+
+As discussed in Section~\ref{sec:stencillang}, existing stencil languages may be classified according to whether or not they are aware of the mesh topology.
+A library that is not `mesh-aware', for example \pyop2, can be more challenging to program in because responsibility for reasoning about the topology, including orientations, is passed to the user who has to construct the appropriate indirection maps to represent their mesh.
+By contrast, a `mesh-aware' library does not have these problems but it has to use its own custom mesh implementation.
+This increases the burden on the maintainers of the software and the mesh implementations will, without substantial development effort, suffer from both lack of features (e.g. I/O, parallel decomposition, adaptive refinement) and poor interoperability with other packages.
+
+In this work we attempt to bridge this gap by writing a new stencil language, \pyop3, that combines the advantages provided by `mesh-aware' frameworks with a mature, external mesh implementation (DMPlex).
+\pyop3 is, somewhat obviously, heavily inspired by and based upon \pyop2, and hence much of its design represents either an incremental improvement on \pyop2, or is in fact directly lifted from it.
+
+
+In \pyop3, users declare the iterations to be performed, the local operations to apply, and the stencil patterns for each data structure in a manner that is close to the mathematics/pseudocode.
+As an example, the syntax for a typical \gls{fem} residual assembly, where one loops over cells and computes using data in the cell's closure, would look something like:
+
+\begin{minted}[xleftmargin=4em]{python}
+do_loop(
+  c := mesh.cells.index,
+  kernel(dat0[closure(c)], dat1[closure(c)])
+)
+\end{minted}
+
+Unlike \pyop2, \pyop3 permits arbitrary composition of DMPlex restriction operations.
+One can, for example, easily describe stencils over interior facets where the stencil is composed of \textit{the closure of the cells incident on the facet}, or, in DMPlex terminology, $\closure(\support(p))$:
+
+\begin{minted}[xleftmargin=4em]{python}
+do_loop(
+  f := mesh.interior_facets.index,
+  kernel(
+    dat0[closure(support(f))],
+    dat1[closure(support(f))]
+  )
+)
+\end{minted}
+
+\subsection{Just-in-time compilation}
+
+The execution pipeline is shown in Figure~\ref{fig:codegenproc}.
+First, and this is the main work done by \pyop3, an input \textit{loop expression} is converted to a loopy intermediate representation.
+Then, this intermediate representation is lowered to a low-level language such as C which is then just-in-time compiled to a shared library that can be executed using data provided by the original loop expression (e.g. here that means \py{mesh}, \py{dat0} and \py{dat1}).
+
+Note that in this example, by using \py{do_loop}, we declare the loop expression and then \textit{immediately} execute it.
+It is frequently desirable, for reasons of efficiency, to have a \textit{persistent} loop expression which one can create by running \py{expr = loop(...)}.
+This is discussed in more detail in Section~\ref{sec:impl_overhead}.
+
+\begin{figure}
+  \centering
+  \begin{tikzpicture}
+    \tikzstyle{node} = [
+      rectangle,rounded corners,minimum width=1.5cm,minimum height=1cm,text centered,
+      draw=black,fill=red!80,align=center,anchor=west,font=\footnotesize
+    ];
+    \tikzstyle{input} = [trapezium, trapezium left angle=70, trapezium right angle=110, minimum width=1.5cm, minimum height=1cm, text centered, draw=black, fill=blue!30,align=center,anchor=west,font=\footnotesize];
+
+    \node (loop) [input] at (0,0) {Input loop\\expression};
+    \node (loopy) [node,at={(loop.east)},xshift=.7cm] {Generate\\loopy kernel};
+    \node (c) [node,at={(loopy.east)},xshift=.7cm] {Generate\\source code};
+    \node (exe) [node,at={(c.east)},xshift=.7cm] {Compile\\executable};
+    \node (do) [node,at={(exe.east)},xshift=.7cm] {Execute};
+
+    \draw [-{stealth}] (loop) -- (loopy);
+    \draw [-{stealth}] (loopy) -- (c);
+    \draw [-{stealth}] (c) -- (exe);
+    \draw [-{stealth}] (exe) -- (do);
+    \draw [-{stealth},densely dashed] (loop) to [bend left=35]
+      node[midway,above,align=center,font=\footnotesize] {Pass in data from\\loop expression} (do);
+  \end{tikzpicture}
+  \caption{}
+  \label{fig:codegenproc}
+\end{figure}
+
+In the example above, \mintinline{python}{kernel} is an externally provided loopy kernel augmented with \textit{access descriptors} (\py{READ}, \py{WRITE}, \py{RW}, \py{INC}, \py{MIN} or \py{MAX}) that allows \pyop3 to emit the correct packing/unpacking code.
+In this case, if we assume the access descriptors for \py{kernel} are \py{READ} and \py{INC}, then we would generate C code resembling that shown in Listing~\ref{lst:basicloop}.
+
+\begin{listing}
+  \begin{minted}{c}
+void do_loop(int ncells, double *dat0, double *dat1, int *map0) {
+  double t0[CLOSURE_SIZE], t1[CLOSURE_SIZE];
+
+  for (int c=0; c<ncells; ++c) {
+    // Pack temporaries
+    for (int p=0; p<CLOSURE_SIZE; ++p) {
+      t0[p] = dat0[map0[c*CLOSURE_SIZE+p]];
+      t1[p] = 0.0;
+    }
+    // Do the local computation
+    kernel(t0, t1);
+    // Now scatter the results
+    for (int p=0; p<CLOSURE_SIZE; ++p) {
+      dat1[map0[c*CLOSURE_SIZE+p]] += t1[p];
+    }
+  }
+}
+  \end{minted}
+  \caption{
+    Simplified version of code that would be generated by \pyop3 where \mintinline{c}{kernel} has access descriptors \py{READ} and \py{INC}.
+    \mintinline{c}{CLOSURE_SIZE} is an integer constant and would be known at compile-time.
+  }
+  \label{lst:basicloop}
+\end{listing}
+
+\subsection{A new abstraction for mesh data layouts}
+
+The additional flexibility \pyop3 has over its precursor \pyop2 is thanks to its novel abstraction for describing data layouts.
+In \pyop2, data layouts are prescribed by associating data (i.e. \glspl{dof}) with \textit{sets}.
+More precisely, they are described with a \py{DataSet}, which is formed by associating a \py{Set} with some \textit{local shape} tuple, termed its \py{dim}.
+To demonstrate, consider a \pyop2 \py{Dat} originating from some vector element discretisation applied over a mesh.
+At each node in the discretisation, recalling that there need not be just one node per topological entity, this \py{Dat} would store \glspl{dof} with some non-scalar \py{dim}, say, \py{(3,)}.
+Such a layout is shown in Figure~\ref{fig:vdat_pyop2}.
+
+\begin{figure}
+  \centering
+  \begin{subfigure}{0.48\textwidth}
+    \centering
+    \begin{tikzpicture}[y=-1cm,scale=.75]
+      \begin{scope}[yshift=0cm]
+        \fill[lightgray] (0,0) rectangle(6,1);
+        \filldraw[draw=black, fill=white] (0.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (1.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (2.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (3.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (4.5,0) rectangle ++ (1,1);
+        \node[at={(1,.5)}, ptlabel] {$i_0$};
+        \node[at={(2,.5)}, ptlabel] {$i_1$};
+        \node[at={(3,.5)}, ptlabel] {$i_4$};
+        \node[at={(4,.5)}, ptlabel] {$i_5$};
+        \node[at={(5,.5)}, ptlabel] {$i_9$};
+        \draw (0,0) -- (6,0);
+        \draw (0,1) -- (6,1);
+      \end{scope}
+
+      \begin{scope}[xshift=1.5cm,yshift=-2cm]
+        \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+        \node[at={(0.5,.5)}, ptlabel] {$d_0$};
+        \node[at={(1.5,.5)}, ptlabel] {$d_1$};
+        \node[at={(2.5,.5)}, ptlabel] {$d_2$};
+
+        \draw (1,-1) -- (0,0);
+        \draw (2,-1) -- (3,0);
+      \end{scope}
+
+      \node (nodeslabel) [ptlabel] at (7,.5) {Nodes};
+      \node (dofslabel) [ptlabel] at (7,2.5) {\glspl{dof}};
+      % \draw [-{stealth},shorten <=0pt,shorten >=8pt] (nodeslabel) -- (6,.5);
+      % \draw [-{stealth},shorten <=0pt,shorten >=8pt] (dofslabel) -- (4.5,2.5);
+    \end{tikzpicture}
+    \caption{
+      A typical \pyop2 \py{Dat} data layout for a \py{DataSet} with \py{dim} \py{(3,)}.
+      Note that the nodes are unordered, since we are on an unstructured mesh, but that the \glspl{dof} are ordered.
+    }
+    \label{fig:vdat_pyop2}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.48\textwidth}
+    \centering
+    \begin{tikzpicture}[y=-1cm,scale=.75]
+      \begin{scope}[yshift=0cm]
+        \fill[lightgray] (0,0) rectangle(6,1);
+        \filldraw[draw=black, fill=white] (0.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (1.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (2.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (3.5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (4.5,0) rectangle ++ (1,1);
+        \node[at={(1,.5)}, ptlabel] {$c_5$};
+        \node[at={(2,.5)}, ptlabel] {$v_1$};
+        \node[at={(3,.5)}, ptlabel] {$e_4$};
+        \node[at={(4,.5)}, ptlabel] {$e_5$};
+        \node[at={(5,.5)}, ptlabel] {$c_9$};
+        \draw (0,0) -- (6,0);
+        \draw (0,1) -- (6,1);
+      \end{scope}
+
+      \begin{scope}[xshift=2cm,yshift=-2cm]
+        \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+        \node[at={(0.5,.5)}, ptlabel] {$i_0$};
+        \node[at={(1.5,.5)}, ptlabel] {$i_1$};
+
+        \draw (.5,-1) -- (0,0);
+        \draw (1.5,-1) -- (2,0);
+      \end{scope}
+
+      \begin{scope}[xshift=1cm,yshift=-4cm]
+        \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+        \node[at={(0.5,.5)}, ptlabel] {$d_0$};
+        \node[at={(1.5,.5)}, ptlabel] {$d_1$};
+        \node[at={(2.5,.5)}, ptlabel] {$d_2$};
+
+        \draw (1,-1) -- (0,0);
+        \draw (2,-1) -- (3,0);
+      \end{scope}
+
+      \node (pointslabel) [ptlabel] at (7,.5) {Points};
+      \node (nodeslabel) [ptlabel] at (7,2.5) {Nodes};
+      \node (dofslabel) [ptlabel] at (7,4.5) {\glspl{dof}};
+      % \draw [-{stealth},shorten <=0pt,shorten >=8pt] (pointslabel) -- (6,.5);
+      % \draw [-{stealth},shorten <=0pt,shorten >=8pt] (nodeslabel) -- (4.5,2.5);
+      % \draw [-{stealth},shorten <=0pt,shorten >=8pt] (dofslabel) -- (4.5,4.5);
+    \end{tikzpicture}
+    \caption{
+      A typical \pyop2 \py{Dat} data layout for a \py{DataSet} with \py{dim} \py{(3,)}.
+      Note that the nodes are unordered, since we are on an unstructured mesh, but that the \glspl{dof} are ordered.
+    }
+    \label{fig:vdat_pyop3}
+  \end{subfigure}
+\end{figure}
+
+There are a number of advantages to this approach:
+Firstly, code generation is very straightforward as packing/unpacking is as straightforward as iterating over the nodes with a fixed size inner loop over the \glspl{dof}.
+Also, this approach maps naturally to PETSc's notion of a \textit{blocked} matrix (\clang{Mat}) or vector (\clang{Vec}), since a block describes contiguous data that can be addressed all together.
+
+Despite these advantages, however, this simple data layout model \textit{loses topological information}.
+\pyop2 \py{DataSets} store data per node, but they do not know which topological entities the nodes originated from.
+A more realistic data model for the vector-valued \py{Dat} is shown in Figure~\ref{fig:vdat_pyop3}.
+
+This approach is advantageous because it is much more natural to reason about mesh operations at the level of mesh points.
+DMPlex restrictions naturally map points to points instead of points to nodes and so map composition becomes tractable.
+The approach also facilitates: orienting \glspl{dof} (Section~\ref{sec:impl_orientation}), data layout optimisations (Section~\ref{sec:impl_datalayoutopt}), and extruded and other partially-structured meshes (Section~\ref{sec:future_partialstructure}).
+
+
+% START FROM HERE
+% now talk about addressing it (multiindex) and codegen etc.
+% i.e. we now have this data structure - how do we generate code for it? (ignoring maps)
+% talk about things like 'typed' multiindices, layout functions...
+% data layout described using MultiAxis and AxisParts.
+% show as a tree? - yes
 
 % pyop3 is inspired by Simit in that we have a mesh representation that lowers to an indexed tensor 
 % representation for computing
+% taichi hierarchical data layout
+
+
+
+% also sparsity/how to do matrices
+Insertion into sparse data structures is considerably more complicated than for dense ones, especially in parallel, so for sparse matrices we flatten the hierarchy and defer to PETSc.
+Note that in principle our approach does not prohibit sparse things.
+A CSR-type data structure is entirely expressible within the abstraction.
+
+\subsubsection{Maps}
+
+% how we enable composition
+% look at notes...
+
+Data in this hierarchy is accessed via a \textit{typed multi-index}.
+That is, an object of the form $((t_1, i_1), (t_2, i_2), \dots, (t_n, i_n))$ where $t_i$ is an integer indicating the axis part that needs to be selected from the multi-axis and $i_n$ is the index along that axis part.
+Under such a prescription, a map is therefore a \textit{function between multi-indexes} of the form
+
+\vspace{1em}
+
+\begin{equation*}
+  \begin{pmatrix} (t_1, i_1) \\ (t_2, i_2) \\ \dots \\ (t_n, i_n) \end{pmatrix}
+  \to
+  \begin{pmatrix} (u^1_1, j^1_1) \\ (u^1_2, j^1_2) \\ \dots \\ (u^1_{k_1}, j^1_{k_1}) \end{pmatrix}
+  ,
+  \begin{pmatrix} (u^2_1, j^2_1) \\ (u^2_2, j^2_2) \\ \dots \\ (u^2_{k_2}, j^2_{k_2}) \end{pmatrix}
+  , \dots ,
+  \begin{pmatrix} (u^m_1, j^m_1) \\ (u^m_2, j^m_2) \\ \dots \\ (u^m_{k_m}, j^m_{k_m}) \end{pmatrix}.
+\end{equation*}
+
+\vspace{1em}
+
+In other words, a map transforms a multi-index into $k$ other multi-indexes.
+% not true
+In general the length of the output multi-indexes do not need to match either the input multi-index or each other (though in many cases they do).
+Also the `type' of each index ($u^a_b$) does not need to match between multi-indices.
+
+% a map produces multiindices with the same depth as the input, parents need not match (but here assume there are no parents, that's for extruded later).
+
+% example code should really show MapGetSize(type) and MapGetLayout(type, index) or similar (and loop over types)
+% else hit instruction cache problems from too much unrolling - extra compute doesn't matter because memory-bound
+
+% a map is basically a multiarray like dats (but 1D) where the input multiindex indexes into it to return a (type, index) tuple. Need parent() to construct full multiindex.
+
+
+\subsubsection{Orienting degrees-of-freedom}
+\label{sec:impl_orientation}
+
+% relies on relative orientation in stencil vs 'canonical' one.
+% so look at the orientation returned by the maps and transform all subaxes according to the relevant rule. (e.g. *-1)
+% need to transform values using local operation
+
+% we only deal with this right at the end, with the last plex restriction before accessing data? probably not, don't mention it.
+
+\subsubsection{Data layout transformations}
+\label{sec:impl_datalayoutopt}
 
 % should support Gpu, inter-element vectorisation
+% AoSoA for vectorisation
+% tiling
+% mixed reordering
 
-\subsection{Mesh operations}
-% present the interface
-
-\subsection{Hierarchical data layout}
-
-\pyop3 employs a novel hierarchical data layout.
-It was inspired by considering what the data layouts of mesh data actually look like.
-As a simple example, consider the data layout for a typically unstructured mesh with *some nodes and some DoFs per node* (see Figure X - include a triangle too).
-
-%In \pyop2, we flatten early to a DataSet == Set + dim
-% can only guarantee fixed loop bounds for the innermost `dim` - for codegen.
-
-% now show extruded - demos the need for a hierarchy as flattening clearly loses information.
-% state that this lets us do cool composition?
-
-% data layout example
 \begin{tikzpicture}[y=-1cm]
-  \fill[lightgray] (0,0) rectangle(7,1);
-  \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
-  \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
-  \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
-  \filldraw[draw=black, fill=white] (3.5,0) rectangle (4.5,1);
-  \node[at={(1,.5)}, ptlabel] {$c_0$};
-  \node[at={(2,.5)}, ptlabel] {$v_1$};
-  \node[at={(3,.5)}, ptlabel] {$c_4$};
-  \node[at={(4,.5)}, ptlabel] {$v_8$};
-  \draw (0,0) -- (7,0);
-  \draw (0,1) -- (7,1);
+  \begin{scope}[xshift=3.5cm, yshift=0cm]
+    \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
+    \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
+    \node[at={(.5,.5)}, ptlabel] {$V_0$};
+    \node[at={(1.5,.5)}, ptlabel] {$V_1$};
+  \end{scope}
 
   \begin{scope}[yshift=-2cm]
-    \filldraw[draw=black, fill=white] (2,0) rectangle (3,1);
-    \filldraw[draw=black, fill=white] (3,0) rectangle (4,1);
-    \node[at={(2.5,.5)}, ptlabel] {$d_0$};
-    \node[at={(3.5,.5)}, ptlabel] {$d_1$};
-    \draw (2,0) rectangle (4,1);
+    \begin{scope}[xshift=0cm]
+      \fill[lightgray] (0,0) rectangle (4,1);
+      \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+      \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+      \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+      \node[at={(1,.5)}, ptlabel] {$c_0$};
+      \node[at={(2,.5)}, ptlabel] {$v_1$};
+      \node[at={(3,.5)}, ptlabel] {$c_4$};
+      \draw (0,0) -- (4,0);
+      \draw (0,1) -- (4,1);
+    \end{scope}
 
-    \draw (2.5,-1) -- (2,0);
-    \draw (3.5,-1) -- (4,0);
+    \begin{scope}[xshift=5cm]
+      \fill[lightgray] (0,0) rectangle (4,1);
+      \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+      \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+      \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+      \node[at={(1,.5)}, ptlabel] {$c_0$};
+      \node[at={(2,.5)}, ptlabel] {$v_1$};
+      \node[at={(3,.5)}, ptlabel] {$c_4$};
+      \draw (0,0) -- (4,0);
+      \draw (0,1) -- (4,1);
+    \end{scope}
   \end{scope}
+
+  \draw (3.5,1) -- (0,2);
+  \draw (4.5,1) -- (4,2);
+  \draw (4.5,1) -- ({0+5},2);
+  \draw (5.5,1) -- ({4+5},2);
 
 \end{tikzpicture}
 
-\subsection{Parallel design}
+\subsubsection{Enabling new research}
 
-% based on/lifted from PyOP2
+% p-adaptivity
+% mixed mesh
+% mixed arity (PIC, pass layer count)
+
+We are able to describe `ragged' data layouts where the size of the array is selected from an additional array indexed by the `parent' indices.
+This is useful for variable layer extrusion and for mixed arity maps.
+
+\subsection{Parallel design}
+\label{sec:impl_parallel}
+
+\pyop3 has the same parallel design as \pyop2.
+
 % ghost/halo values for overlaps
+% can do variable halo size to replace exchanges with redundant communication - used in sparse tiling
 % clever layout means we can exchange core, then owned, interleaving communication
 % PETSc Mat for parallel matrices
 
@@ -62,9 +361,11 @@ As a simple example, consider the data layout for a typically unstructured mesh 
     \tkzSetUpStyle[line width=2,shorten >=.2cm,shorten <=.2cm]{edge}
 
     \tkzSetUpStyle[cell,fill=red!50]{p1cell}
+    \tkzSetUpStyle[cell,fill=red!25]{p1cellhalo}
     \tkzSetUpStyle[edge,draw=red!80]{p1edge}
     \tkzSetUpStyle[draw=red!80,fill=red!80]{p1vert}
     \tkzSetUpStyle[cell,fill=blue!50]{p2cell}
+    \tkzSetUpStyle[cell,fill=blue!25]{p2cellhalo}
     \tkzSetUpStyle[edge,draw=blue!80]{p2edge}
     \tkzSetUpStyle[draw=blue!80,fill=blue!80]{p2vert}
 
@@ -104,10 +405,10 @@ As a simple example, consider the data layout for a typically unstructured mesh 
       \tkzDrawPolygon[p1cell](p1v6,p1v7,p1v10)
       \tkzDrawPolygon[p1cell](p1v7,p1v10,p1v11)
       \tkzDrawPolygon[p1cell](p1v8,p1v9,p1v12)
-      \tkzDrawPolygon[p2cell](p1v9,p1v12,p1v13)
-      \tkzDrawPolygon[p2cell](p1v9,p1v13,p1v14)
+      \tkzDrawPolygon[p2cellhalo](p1v9,p1v12,p1v13)
+      \tkzDrawPolygon[p2cellhalo](p1v9,p1v13,p1v14)
       \tkzDrawPolygon[p1cell](p1v9,p1v10,p1v14)
-      \tkzDrawPolygon[p2cell](p1v10,p1v14,p1v15)
+      \tkzDrawPolygon[p2cellhalo](p1v10,p1v14,p1v15)
       \tkzDrawPolygon[p1cell](p1v10,p1v11,p1v15)
 
       % edges
@@ -142,12 +443,12 @@ As a simple example, consider the data layout for a typically unstructured mesh 
       \tkzDefShiftPoint[p1v9](.1,-.2){p1v9patch}
       \tkzDefShiftPoint[p1v5](-.2,-.2){p1v5patch}
       \tkzDefShiftPoint[p1v6](-.2,0){p1v6patch}
-      \filldraw[draw=black,fill=black,fill opacity=.1,rounded corners=2]
+      \filldraw[draw=black,fill=black,fill opacity=.1,rounded corners=3]
       % \filldraw[draw=none,fill=blue,fill opacity=.4,rounded corners=2]
       % \filldraw[pattern={Hatch[distance=3mm,angle=45]},draw=black,rounded corners=2]
         (p1v7patch) -- (p1v11patch) -- (p1v15patch) -- (p1v14patch) -- (p1v9patch) --
         (p1v5patch) -- (p1v6patch) -- cycle;
-      \draw [densely dashed] (p1v10) circle [radius=5pt];
+      \draw (p1v10) circle [radius=5pt];
 
       % label "core" and "owned"
       \node (p1core) [inner sep=0pt,xshift=-20pt,yshift=20pt] at (p1v7) {\footnotesize core};
@@ -177,12 +478,12 @@ As a simple example, consider the data layout for a typically unstructured mesh 
       \tkzDefPoint(2.9,3.1){p2v15}
 
       % cells
-      \tkzDrawPolygon[p1cell,opacity=.5](p2v0,p2v1,p2v4)
+      \tkzDrawPolygon[p1cellhalo](p2v0,p2v1,p2v4)
       \tkzDrawPolygon[p2cell](p2v1,p2v4,p2v5)
       \tkzDrawPolygon[p2cell](p2v1,p2v5,p2v6)
-      \tkzDrawPolygon[p1cell,opacity=.5](p2v1,p2v2,p2v6)
+      \tkzDrawPolygon[p1cellhalo](p2v1,p2v2,p2v6)
       \tkzDrawPolygon[p2cell](p2v2,p2v6,p2v7)
-      \tkzDrawPolygon[p1cell,opacity=.5](p2v2,p2v3,p2v7)
+      \tkzDrawPolygon[p1cellhalo](p2v2,p2v3,p2v7)
       \tkzDrawPolygon[p2cell](p2v4,p2v5,p2v8)
       \tkzDrawPolygon[p2cell](p2v5,p2v8,p2v9)
       \tkzDrawPolygon[p2cell](p2v5,p2v6,p2v9)
@@ -251,4 +552,8 @@ As a simple example, consider the data layout for a typically unstructured mesh 
 % use DG advection as an example - caching and persistent objects can be shown to be key
 % but now things like halo exchanges for valid halos (i.e. noops) have non-trivial cost -> move out of Python to the generated code.
 
-\vspace{1em}
+\subsection{Avoiding Python overhead}
+\label{sec:impl_overhead}
+
+% halo exchanges in C
+% do_loop(...) vs expr = loop(...) - easy to swap out data structures via **kwargs, weakref
