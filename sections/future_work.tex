@@ -10,6 +10,23 @@
 % below are unified by "mesh transformation" approach in DMPlex - should be possible to reconstruct
 % data hierarchy by inspecting labels.
 
+% relax constraint that a map cannot have parents
+Under such a prescription, a map is therefore a \textit{function between multi-indexes} of the form
+
+\vspace{1em}
+
+\begin{equation*}
+  \begin{pmatrix} (t_1, i_1) \\ (t_2, i_2) \\ \dots \\ (t_n, i_n) \end{pmatrix}
+  \to
+  \begin{pmatrix} (u^1_1, j^1_1) \\ (u^1_2, j^1_2) \\ \dots \\ (u^1_{k_1}, j^1_{k_1}) \end{pmatrix}
+  ,
+  \begin{pmatrix} (u^2_1, j^2_1) \\ (u^2_2, j^2_2) \\ \dots \\ (u^2_{k_2}, j^2_{k_2}) \end{pmatrix}
+  , \dots ,
+  \begin{pmatrix} (u^m_1, j^m_1) \\ (u^m_2, j^m_2) \\ \dots \\ (u^m_{k_m}, j^m_{k_m}) \end{pmatrix}.
+\end{equation*}
+
+\vspace{1em}
+
 \subsubsection{Extruded meshes}
 
 \subsubsection{Regular mesh refinement}
@@ -324,6 +341,7 @@
 % focussed on the packing part
 
 \subsection{Patch preconditioners}
+\label{sec:future_patch}
 
 
 \begin{minted}{python}

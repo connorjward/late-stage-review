@@ -4,7 +4,7 @@ In this chapter we review: existing software abstractions for mesh computations,
 
 \subsection{Existing software abstractions}
 
-\subsection{Stencil languages}
+\subsubsection{Stencil languages}
 \label{sec:stencillang}
 
 % can be classified according to whether or not they know about the mesh - makes describing connectivity clearer,
@@ -77,7 +77,9 @@ Importantly, this abstraction does not contain any concept of the underlying mes
 In software, a mesh is typically represented by a collection of sets of entities (e.g. cells or faces), coupled with adjacency relations between these sets.
 Possible abstractions capturing this behaviour include databases (ebb, moab) or hypergraphs (simit).
 In this work we focus on DMPlex, the unstructured mesh abstraction used in PETSc.
-In contrast with Ebb, Simit or Liszt, DMPlex is a more general purpose mesh abstraction and so has a more substantial feature set.z
+In contrast with Ebb, Simit or Liszt, DMPlex is a more general purpose mesh abstraction and so has a more substantial feature set.
+
+% parallel partioning, adaptation, I/O, AMR...
 
 In DMPlex, the mesh is represented as a \textit{CW-complex}, an object from algebraic topology that describes some topological space.
 In such a complex, all topological entities (e.g. cells, vertices) are simply referred to as \textit{points} and the connectivity of the mesh can be expressed as the edges of a \gls{dag} with the vertices being the points of the mesh.
@@ -166,6 +168,8 @@ For instance, the classical finite element request of ``give me all of the \glsp
 Another example useful for finite volume calculations: ``what are my neighbouring cells?" is supp(cone(c)).
 One can also do clever patch things.
 
+With DMPlex, parallel vectors are created by associating a DMPlex mesh with a \clang{PetscSection}.
+A \clang{PetscSection} is a simple object that tabulates offsets such that entries in an array may be addressed.
 
 \subsection{Methods for performance optimisation}
 
@@ -475,206 +479,205 @@ However, to our knowledge, this is not performed by any existing stencil library
 
 \begin{figure}
   \centering
+  \begin{subfigure}{0.45\textwidth}
     \centering
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
+    \begin{tikzpicture}
+      % setup
+      \tkzSetUpStyle[
+        postaction=decorate,
+        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+      ]{myarrow}
 
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v1}
-        \tkzDefShiftPoint[v0](60:4){v2}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v1,v2)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
+      % triangle
+      \tkzDefPoint(0,0){v0}
+      \tkzDefShiftPoint[v0](0:4){v1}
+      \tkzDefShiftPoint[v0](60:4){v2}
+      \tkzDrawSegment[myarrow=stealth](v0,v1)
+      \tkzDrawSegment[myarrow=stealth](v1,v2)
+      \tkzDrawSegment[myarrow=stealth](v0,v2)
 
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
+      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
+      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
 
-        \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_basic_ref}
-    \end{subfigure}
-    %
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v2}
-        \tkzDefShiftPoint[v0](60:4){v1}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v1,v2)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$b$};
-        \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_basic_flip}
-    \end{subfigure}
-
-    \vspace{1em}
-
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v1}
-        \tkzDefShiftPoint[v0](60:4){v2}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v1,v2)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        % arrows
-        \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
-        \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
-        \tkzDefShiftPoint[e1d0](30:.6){e1d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
-        \tkzDefShiftPoint[e1d1](30:.6){e1d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
-        \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
-        \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
-
-        % filled bits
-        \filldraw [draw=black,fill=red!80,line width=.7] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$a$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$b$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!80,line width=.7] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_vector_ref}
-    \end{subfigure}
-    %
-    \begin{subfigure}{0.45\textwidth}
-      \centering
-      \begin{tikzpicture}
-        % setup
-        \tkzSetUpStyle[
-          postaction=decorate,
-          decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
-        ]{myarrow}
-
-        % triangle
-        \tkzDefPoint(0,0){v0}
-        \tkzDefShiftPoint[v0](0:4){v1}
-        \tkzDefShiftPoint[v0](60:4){v2}
-        \tkzDrawSegment[myarrow=stealth](v0,v1)
-        \tkzDrawSegment[myarrow=stealth](v2,v1)
-        \tkzDrawSegment[myarrow=stealth](v0,v2)
-
-        % edge dofs
-        \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-        \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-        \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-        \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-        \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-        \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
-
-        % arrows
-        \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
-        \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
-        \tkzDefShiftPoint[e1d0](210:.6){e1d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
-        \tkzDefShiftPoint[e1d1](210:.6){e1d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
-        \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
-        \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
-        \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
-
-        \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
-        \node at (e0d0) {$a$};
-        \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
-        \node at (e0d1) {$b$};
-        \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
-        \node at (e1d0) {$b$};
-        \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
-        \node at (e1d1) {$a$};
-        \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
-        \node at (e2d0) {$a$};
-        \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
-        \node at (e2d1) {$b$};
-      \end{tikzpicture}
-      \caption{}
-      \label{fig:orient_vector_flip}
-    \end{subfigure}
-
+      \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
+      \node at (e0d0) {$a$};
+      \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
+      \node at (e0d1) {$b$};
+      \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
+      \node at (e1d0) {$a$};
+      \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
+      \node at (e1d1) {$b$};
+      \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
+      \node at (e2d0) {$a$};
+      \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
+      \node at (e2d1) {$b$};
+    \end{tikzpicture}
     \caption{}
-    \label{fig:orient}
+    \label{fig:orient_basic_ref}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      % setup
+      \tkzSetUpStyle[
+        postaction=decorate,
+        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+      ]{myarrow}
+
+      % triangle
+      \tkzDefPoint(0,0){v0}
+      \tkzDefShiftPoint[v0](0:4){v2}
+      \tkzDefShiftPoint[v0](60:4){v1}
+      \tkzDrawSegment[myarrow=stealth](v0,v1)
+      \tkzDrawSegment[myarrow=stealth](v1,v2)
+      \tkzDrawSegment[myarrow=stealth](v0,v2)
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
+      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
+      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+
+      \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
+      \node at (e0d0) {$a$};
+      \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
+      \node at (e0d1) {$b$};
+      \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
+      \node at (e1d0) {$a$};
+      \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
+      \node at (e1d1) {$b$};
+      \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
+      \node at (e2d0) {$a$};
+      \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
+      \node at (e2d1) {$b$};
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:orient_basic_flip}
+  \end{subfigure}
+
+  \vspace{1em}
+
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      % setup
+      \tkzSetUpStyle[
+        postaction=decorate,
+        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+      ]{myarrow}
+
+      % triangle
+      \tkzDefPoint(0,0){v0}
+      \tkzDefShiftPoint[v0](0:4){v1}
+      \tkzDefShiftPoint[v0](60:4){v2}
+      \tkzDrawSegment[myarrow=stealth](v0,v1)
+      \tkzDrawSegment[myarrow=stealth](v1,v2)
+      \tkzDrawSegment[myarrow=stealth](v0,v2)
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
+      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
+      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+
+      % arrows
+      \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
+      \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
+      \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
+      \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
+      \tkzDefShiftPoint[e1d0](30:.6){e1d0v}
+      \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
+      \tkzDefShiftPoint[e1d1](30:.6){e1d1v}
+      \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
+      \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
+      \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
+      \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
+      \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
+
+      % filled bits
+      \filldraw [draw=black,fill=red!80,line width=.7] (e0d0) circle [radius=7pt];
+      \node at (e0d0) {$a$};
+      \filldraw [draw=black,fill=red!80,line width=.7] (e0d1) circle [radius=7pt];
+      \node at (e0d1) {$b$};
+      \filldraw [draw=black,fill=red!80,line width=.7] (e1d0) circle [radius=7pt];
+      \node at (e1d0) {$a$};
+      \filldraw [draw=black,fill=red!80,line width=.7] (e1d1) circle [radius=7pt];
+      \node at (e1d1) {$b$};
+      \filldraw [draw=black,fill=red!80,line width=.7] (e2d0) circle [radius=7pt];
+      \node at (e2d0) {$a$};
+      \filldraw [draw=black,fill=red!80,line width=.7] (e2d1) circle [radius=7pt];
+      \node at (e2d1) {$b$};
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:orient_vector_ref}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      % setup
+      \tkzSetUpStyle[
+        postaction=decorate,
+        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+      ]{myarrow}
+
+      % triangle
+      \tkzDefPoint(0,0){v0}
+      \tkzDefShiftPoint[v0](0:4){v1}
+      \tkzDefShiftPoint[v0](60:4){v2}
+      \tkzDrawSegment[myarrow=stealth](v0,v1)
+      \tkzDrawSegment[myarrow=stealth](v2,v1)
+      \tkzDrawSegment[myarrow=stealth](v0,v2)
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
+      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
+      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+
+      % arrows
+      \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
+      \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
+      \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
+      \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
+      \tkzDefShiftPoint[e1d0](210:.6){e1d0v}
+      \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
+      \tkzDefShiftPoint[e1d1](210:.6){e1d1v}
+      \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
+      \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
+      \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
+      \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
+      \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
+
+      \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
+      \node at (e0d0) {$a$};
+      \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
+      \node at (e0d1) {$b$};
+      \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
+      \node at (e1d0) {$b$};
+      \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
+      \node at (e1d1) {$a$};
+      \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
+      \node at (e2d0) {$a$};
+      \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
+      \node at (e2d1) {$b$};
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:orient_vector_flip}
+  \end{subfigure}
+
+  \caption{}
+  \label{fig:orient}
 \end{figure}

@@ -103,7 +103,7 @@ void do_loop(int ncells, double *dat0, double *dat1, int *map0) {
 
 The additional flexibility \pyop3 has over its precursor \pyop2 is thanks to its novel abstraction for describing data layouts.
 In \pyop2, data layouts are prescribed by associating data (i.e. \glspl{dof}) with \textit{sets}.
-More precisely, they are described with a \py{DataSet}, which is formed by associating a \py{Set} with some \textit{local shape} tuple, termed its \py{dim}.
+More precisely, they are described with a \py{DataSet}, which is formed by associating a \py{Set} with some \textit{local shape} (a tuple), termed its \py{dim}.
 To demonstrate, consider a \pyop2 \py{Dat} originating from some vector element discretisation applied over a mesh.
 At each node in the discretisation, recalling that there need not be just one node per topological entity, this \py{Dat} would store \glspl{dof} with some non-scalar \py{dim}, say, \py{(3,)}.
 Such a layout is shown in Figure~\ref{fig:vdat_pyop2}.
@@ -202,8 +202,8 @@ Such a layout is shown in Figure~\ref{fig:vdat_pyop2}.
       % \draw [-{stealth},shorten <=0pt,shorten >=8pt] (dofslabel) -- (4.5,4.5);
     \end{tikzpicture}
     \caption{
-      A typical \pyop2 \py{Dat} data layout for a \py{DataSet} with \py{dim} \py{(3,)}.
-      Note that the nodes are unordered, since we are on an unstructured mesh, but that the \glspl{dof} are ordered.
+      An equivalent data layout that is aware of the topology of the mesh.
+      Note that the number of nodes per entity is not constant - here we indicate that there are 2 nodes per edge, leaving cells and vertices unspecified.
     }
     \label{fig:vdat_pyop3}
   \end{subfigure}
@@ -215,124 +215,279 @@ Also, this approach maps naturally to PETSc's notion of a \textit{blocked} matri
 
 Despite these advantages, however, this simple data layout model \textit{loses topological information}.
 \pyop2 \py{DataSets} store data per node, but they do not know which topological entities the nodes originated from.
-A more realistic data model for the vector-valued \py{Dat} is shown in Figure~\ref{fig:vdat_pyop3}.
+To counter this shortcoming, in \pyop3 we introduce a hierarchical model for describing data layout that can record, among other things, the topological entities that a given node comes from.
+This can be seen in Figure~\ref{fig:vdat_pyop3}.
+Rather than just having nodes and \glspl{dof} per node, we can represent the same vector-valued \py{Dat} using a 3-level data structure containing: mesh points, nodes per point, and \glspl{dof} per node.
 
+In \pyop3, we describe these multi-dimensional, inhomogeneous data structures with a \py{MultiAxis}.
+A \py{MultiAxis} represents a single layer of the hierarchy and is simply a container for some positive number of \py{AxisPart} objects.
+Each \py{AxisPart} describes one particular class of entities in a given layer of the hierarchy and stores information such as the number of entries and how they might be addressed.
+The `type' property of the typed multi-index is simply used as an identifier for the appropriate \py{AxisPart}.
+This is similar to the interface presented by Taichi~\cite{huTaichiLanguageHighperformance2019}. % though we can do unstructured/interleaved stuff
+
+To construct a hierarchical data layout, each \py{AxisPart} can optionally be given a sub-axis (\py{MultiAxis}).
+To demonstrate, the hierarchical layout shown in Figure~\ref{fig:vdat_pyop3} could be constructed using the code in Figure~\ref{lis:demotreecode}.
+The tree itself is shown in Figure~\ref{fig:vdat_tree}.
+
+\begin{figure}
+  \centering
+  \begin{subfigure}{.9\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tikzstyle{node} = [minimum width=1.5cm,text centered,align=center];
+
+      \node [node] (root) at (0,0) {\textit{root}};
+      \node [node] (cells) at (-2,-1) {cells};
+      \node [node] (edges) at (0,-1) {edges};
+      \node [node] (verts) at (2,-1) {vertices};
+      \node [node] (cnodes) at (-2,-2) {nodes};
+      \node [node] (enodes) at (0,-2) {nodes};
+      \node [node] (vnodes) at (2,-2) {nodes};
+      \node [node] (cdofs) at (-2,-3) {\glspl{dof}};
+      \node [node] (edofs) at (0,-3) {\glspl{dof}};
+      \node [node] (vdofs) at (2,-3) {\glspl{dof}};
+
+      \draw [-{stealth}] (root) -- (cells);
+      \draw [-{stealth}] (root) -- (edges);
+      \draw [-{stealth}] (root) -- (verts);
+      \draw [-{stealth}] (cells) -- (cnodes);
+      \draw [-{stealth}] (edges) -- (enodes);
+      \draw [-{stealth}] (verts) -- (vnodes);
+      \draw [-{stealth}] (cnodes) -- (cdofs);
+      \draw [-{stealth}] (enodes) -- (edofs);
+      \draw [-{stealth}] (vnodes) -- (vdofs);
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:vdat_tree}
+  \end{subfigure}
+
+  \begin{subfigure}{.9\textwidth}
+    \begin{minted}[xleftmargin=4em,fontsize=\footnotesize]{python}
+root = (
+  MultiAxis()
+  .add_part(AxisPart(ncells, id="cells"))
+  .add_part(AxisPart(nedges, id="edges"))
+  .add_part(AxisPart(nverts, id="verts"))
+  .add_subaxis("cells", AxisPart(ncnodes, id="cnodes"))
+  .add_subaxis("edges", AxisPart(nenodes, id="enodes"))
+  .add_subaxis("verts", AxisPart(nvnodes, id="vnodes"))
+  .add_subaxis("cnodes", AxisPart(ncdofs))
+  .add_subaxis("enodes", AxisPart(nedofs))
+  .add_subaxis("vnodes", AxisPart(nvdofs))
+)
+    \end{minted}
+    \caption{}
+    \label{lis:demotreecode}
+  \end{subfigure}
+  \caption{}
+  \label{fig:demotree}
+\end{figure}
+
+Having constructed such a data layout, we address it via the use of a \textit{typed multi-index}.
+This is an object of the form $((t_1, i_1), (t_2, i_2), \dots, (t_n, i_n))$ where $t_x$ (the `type') indicates the correct \py{AxisPart} to in the hierarchy.
+For each \py{AxisPart}, and given an index into it ($i_x$), we use \textit{layout functions} to determine its location in memory and these offsets are added together to get the final address.
+A layout function is a function that takes in an index and returns an offset.
+In the case of axes with constant stride this simply takes the form \py{off = iX * stride}, but for non-constant strides it would resemble \py{off = offsets[iX]}.
+
+One major challenge presented by this new layout is that axes are no longer homogeneous.
+In Figure~\ref{fig:vdat_pyop3} for instance, not all points have the same number of nodes per point.
+This means that one can no longer stride over the axis by a constant value, and instead a lookup table must be used.
+
+% TODO: This bit should probably be moved/broken up
 This approach is advantageous because it is much more natural to reason about mesh operations at the level of mesh points.
-DMPlex restrictions naturally map points to points instead of points to nodes and so map composition becomes tractable.
+DMPlex restrictions naturally map points to points instead of points to nodes, making map composition tractable.
 The approach also facilitates: orienting \glspl{dof} (Section~\ref{sec:impl_orientation}), data layout optimisations (Section~\ref{sec:impl_datalayoutopt}), and extruded and other partially-structured meshes (Section~\ref{sec:future_partialstructure}).
-
-
-% START FROM HERE
-% now talk about addressing it (multiindex) and codegen etc.
-% i.e. we now have this data structure - how do we generate code for it? (ignoring maps)
-% talk about things like 'typed' multiindices, layout functions...
-% data layout described using MultiAxis and AxisParts.
-% show as a tree? - yes
-
-% pyop3 is inspired by Simit in that we have a mesh representation that lowers to an indexed tensor 
-% representation for computing
-% taichi hierarchical data layout
-
-
-
-% also sparsity/how to do matrices
-Insertion into sparse data structures is considerably more complicated than for dense ones, especially in parallel, so for sparse matrices we flatten the hierarchy and defer to PETSc.
-Note that in principle our approach does not prohibit sparse things.
-A CSR-type data structure is entirely expressible within the abstraction.
 
 \subsubsection{Maps}
 
-% how we enable composition
-% look at notes...
+When we address some data, the provided data structure is associated with a particular multi-index.
+When we directly address data structures, for example by doing the following:
 
-Data in this hierarchy is accessed via a \textit{typed multi-index}.
-That is, an object of the form $((t_1, i_1), (t_2, i_2), \dots, (t_n, i_n))$ where $t_i$ is an integer indicating the axis part that needs to be selected from the multi-axis and $i_n$ is the index along that axis part.
-Under such a prescription, a map is therefore a \textit{function between multi-indexes} of the form
+\begin{minted}[xleftmargin=4em]{python}
+loop(c := mesh.cells.index, kernel(dat0[c]))
+\end{minted}
+
+Then the multi-index getting used, \py{c}, is simply $[(C, i)]$.
+This is a multi-index with only a single entry which targets all entries in the selected \py{AxisPart}, in this case all cells in the mesh.
+We remark that only the outermost axes need be indexed - the inner axes (here nodes-per-cell and \glspl{dof}-per-node) are automatically included as full slices.
+
+Since computing stencils requires the addressing of adjacent mesh points, we use \textit{maps} to describe which multi-indexes are required.
+To make things clear, a map is defined as a \textit{function that accepts a multi-index and returns multiple multi-indexes}:
 
 \vspace{1em}
-
 \begin{equation*}
-  \begin{pmatrix} (t_1, i_1) \\ (t_2, i_2) \\ \dots \\ (t_n, i_n) \end{pmatrix}
-  \to
-  \begin{pmatrix} (u^1_1, j^1_1) \\ (u^1_2, j^1_2) \\ \dots \\ (u^1_{k_1}, j^1_{k_1}) \end{pmatrix}
-  ,
-  \begin{pmatrix} (u^2_1, j^2_1) \\ (u^2_2, j^2_2) \\ \dots \\ (u^2_{k_2}, j^2_{k_2}) \end{pmatrix}
-  , \dots ,
-  \begin{pmatrix} (u^m_1, j^m_1) \\ (u^m_2, j^m_2) \\ \dots \\ (u^m_{k_m}, j^m_{k_m}) \end{pmatrix}.
+  ((t_1, i_1),) \to ((u^1_1, j^1_1),) ,\ ((u^2_1, j^2_1),) ,\ \dots ,\ ((u^m_1, j^m_1),).
 \end{equation*}
-
 \vspace{1em}
 
-In other words, a map transforms a multi-index into $k$ other multi-indexes.
-% not true
-In general the length of the output multi-indexes do not need to match either the input multi-index or each other (though in many cases they do).
-Also the `type' of each index ($u^a_b$) does not need to match between multi-indices.
+As an example, assuming a triangular mesh, the code
 
-% a map produces multiindices with the same depth as the input, parents need not match (but here assume there are no parents, that's for extruded later).
+\begin{minted}[xleftmargin=4em]{python}
+loop(c := mesh.cells.index, kernel(dat[closure(c)]))
+\end{minted}
 
-% example code should really show MapGetSize(type) and MapGetLayout(type, index) or similar (and loop over types)
-% else hit instruction cache problems from too much unrolling - extra compute doesn't matter because memory-bound
+uses the $\closure$ DMPlex restriction operation to yield a map of the form
 
-% a map is basically a multiarray like dats (but 1D) where the input multiindex indexes into it to return a (type, index) tuple. Need parent() to construct full multiindex.
+\vspace{1em}
+\begin{equation*}
+  ((C, c_0),)
+  \to ((C, c_0),)
+  ,\ ((E, e_0),) ,\ ((E, e_1),) ,\ ((E, e_2),)
+  ,\ ((V, v_0),) ,\ ((V, v_1),) ,\ ((V, v_2),).
+\end{equation*}
+\vspace{1em}
 
+In an analogous way to layout functions, maps can be implemented either using index functions (i.e. $e_0 = f(c_0)$), or lookup tables (\py{e0 = map[c0]}) depending on whether or not there is structure to exploit in the data layout.
+This enables, for example, the use of structured meshes without needing to incur the memory bandwidth cost of tabulating a lookup table.
+
+The approach just described enables arbitrary map composition because maps now work in line with how DMPlex handles restrictions, namely functions between mesh points, rather than between points and nodes.
+
+Note that at present we restrict maps to only apply to multi-indexes of length 1.
+This is sufficient for unstructured meshes but a necessity for partially-structured meshes.
+This is discussed in detail in Section~\ref{sec:future_partialstructure}.
+
+\subsubsection{Raggedness and sparsity}
+
+There are occasions where one needs a data structure where the extent of an inner dimension depends on an outer one.
+This occurs for example in variable layer extruded meshes - the extent of the inner dimension (the columns) is dependent upon the mesh point in the base mesh.
+To get this to work, \pyop3 needs to generate code that resembles:
+
+\begin{minted}[xleftmargin=4em]{c}
+for (int i=0; i<N; ++i)
+  for (int j=0; j<nlayers[i]; ++j)
+    ...
+\end{minted}
+
+Note how the inner loop extent is dependent upon the outer one via the \clang{nlayers} array.
+
+In \pyop3, such a `ragged' data structure can be initialised in the following way:
+
+\begin{minted}[xleftmargin=4em]{python}
+nlayers = Dat(MultiAxis(AxisPart(N)), dtype=int)
+root = (
+  MultiAxis()
+  .add_part(AxisPart(N, id="outer"))
+  .add_subaxis("outer", AxisPart(nlayers))
+)
+\end{minted}
+
+Instead of using a constant integer value to prescribe the extent of the inner \py{AxisPart}, another \py{MultiAxis}-using data structure is used instead.
+Having extents also use \py{MultiAxes} is advantageous as the code generation procedure can be shared.
+
+We can also use the same technique to generate code for maps with \textit{variable arity}.
+An example of this would be for $\plexstar(p)$ for $p$ a vertex since the number of incident edges on a vertex is variable.
+This is useful for patch-based computations (see Section~\ref{sec:future_patch}).
+
+Although not yet implemented, it should be entirely possible to implement sparse data structures by making small extensions to the existing abstraction.
+If we consider a sparse matrix compressed with compressed-sparse-row (CSR) format, the data layout is described using two arrays: the row and column indices.
+This is very similar to our existing solution for ragged arrays except that we assume that the internal dimension is logically dense, and hence do not need to specify column indices.
+
+It should be noted however that we are assuming that the matrix is local to a single processor.
+Parallel sparse matrices are considerably more challenging to implement and so we defer the work to PETSc (see Section~\ref{sec:impl_parallel}).
 
 \subsubsection{Orienting degrees-of-freedom}
 \label{sec:impl_orientation}
 
-% relies on relative orientation in stencil vs 'canonical' one.
-% so look at the orientation returned by the maps and transform all subaxes according to the relevant rule. (e.g. *-1)
-% need to transform values using local operation
+Having a hierarchical, `mesh-aware' data layout makes it much more straightforward to correctly handle orientations when packing stencils.
+The way it works is as follows:
+1) The DMPlex restrictions return orientation information of the mesh entities as well as the multi-index,
+2) Each axis below the one selected by the map is transformed according to some predefined rule, using the orientation as a selector for the transformation.
 
-% we only deal with this right at the end, with the last plex restriction before accessing data? probably not, don't mention it.
+As an example, we refer back to Figure~\ref{fig:orient_vector_flip}.
+Noting that the data layout will decompose into points, nodes-per-point and \glspl{dof}-per-node, the transformation to canonical layout is done in two steps: permuting the nodes on the edge and flipping the individual \glspl{dof} such that they point in the right direction.
+These operations map naturally to the different sub-axes of the data layout - the permutation applies to nodes and so can apply to the node axis, and the reflection applies to each \glspl{dof} individually and so can be applied to the \glspl{dof} axis.
 
 \subsubsection{Data layout transformations}
 \label{sec:impl_datalayoutopt}
+
+%HERE
+% TODO: Add a vector data layout example to go along with the hierarchies. Colour V0 and V1 differently
 
 % should support Gpu, inter-element vectorisation
 % AoSoA for vectorisation
 % tiling
 % mixed reordering
 
-\begin{tikzpicture}[y=-1cm]
-  \begin{scope}[xshift=3.5cm, yshift=0cm]
-    \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
-    \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
-    \node[at={(.5,.5)}, ptlabel] {$V_0$};
-    \node[at={(1.5,.5)}, ptlabel] {$V_1$};
-  \end{scope}
+\begin{figure}
+  \centering
+  \begin{subfigure}{.48\textwidth}
+    \centering
+    \begin{tikzpicture}[y=-1cm,scale=.75]
+      \begin{scope}[xshift=3.25cm, yshift=0cm]
+        \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
+        \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
+        \node[at={(.5,.5)}, ptlabel] {$V_0$};
+        \node[at={(1.5,.5)}, ptlabel] {$V_1$};
+      \end{scope}
 
-  \begin{scope}[yshift=-2cm]
-    \begin{scope}[xshift=0cm]
-      \fill[lightgray] (0,0) rectangle (4,1);
-      \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
-      \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
-      \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
-      \node[at={(1,.5)}, ptlabel] {$c_0$};
-      \node[at={(2,.5)}, ptlabel] {$v_1$};
-      \node[at={(3,.5)}, ptlabel] {$c_4$};
-      \draw (0,0) -- (4,0);
-      \draw (0,1) -- (4,1);
-    \end{scope}
+      \begin{scope}[yshift=-2cm]
+        \begin{scope}[xshift=0cm]
+          \fill[lightgray] (0,0) rectangle (4,1);
+          \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+          \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+          \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+          \node[at={(1,.5)}, ptlabel] {$c_0$};
+          \node[at={(2,.5)}, ptlabel] {$v_1$};
+          \node[at={(3,.5)}, ptlabel] {$c_4$};
+          \draw (0,0) -- (4,0);
+          \draw (0,1) -- (4,1);
+        \end{scope}
 
-    \begin{scope}[xshift=5cm]
-      \fill[lightgray] (0,0) rectangle (4,1);
-      \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
-      \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
-      \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
-      \node[at={(1,.5)}, ptlabel] {$c_0$};
-      \node[at={(2,.5)}, ptlabel] {$v_1$};
-      \node[at={(3,.5)}, ptlabel] {$c_4$};
-      \draw (0,0) -- (4,0);
-      \draw (0,1) -- (4,1);
-    \end{scope}
-  \end{scope}
+        \begin{scope}[xshift=4.5cm]
+          \fill[lightgray] (0,0) rectangle (4,1);
+          \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+          \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+          \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+          \node[at={(1,.5)}, ptlabel] {$c_0$};
+          \node[at={(2,.5)}, ptlabel] {$v_1$};
+          \node[at={(3,.5)}, ptlabel] {$c_4$};
+          \draw (0,0) -- (4,0);
+          \draw (0,1) -- (4,1);
+        \end{scope}
+      \end{scope}
 
-  \draw (3.5,1) -- (0,2);
-  \draw (4.5,1) -- (4,2);
-  \draw (4.5,1) -- ({0+5},2);
-  \draw (5.5,1) -- ({4+5},2);
+      \draw (3.25,1) -- (0,2);
+      \draw (4.25,1) -- (4,2);
+      \draw (4.25,1) -- ({0+4.5},2);
+      \draw (5.25,1) -- ({4+4.5},2);
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:mixedreorder_outer}
+  \end{subfigure}
+  %
+  \begin{subfigure}{.48\textwidth}
+    \centering
+    \begin{tikzpicture}[y=-1cm,scale=.75]
+      \begin{scope}[xshift=0cm,yshift=0cm]
+        \fill[lightgray] (0,0) rectangle (4,1);
+        \filldraw[draw=black, fill=white] (0.5,0) rectangle (1.5,1);
+        \filldraw[draw=black, fill=white] (1.5,0) rectangle (2.5,1);
+        \filldraw[draw=black, fill=white] (2.5,0) rectangle (3.5,1);
+        \node[at={(1,.5)}, ptlabel] {$c_0$};
+        \node[at={(2,.5)}, ptlabel] {$v_1$};
+        \node[at={(3,.5)}, ptlabel] {$c_4$};
+        \draw (0,0) -- (4,0);
+        \draw (0,1) -- (4,1);
+      \end{scope}
 
-\end{tikzpicture}
+      \begin{scope}[xshift=1cm, yshift=-2cm]
+        \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
+        \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
+        \node[at={(.5,.5)}, ptlabel] {$V_0$};
+        \node[at={(1.5,.5)}, ptlabel] {$V_1$};
+      \end{scope}
+
+      % \draw (3.5,1) -- (0,2);
+      % \draw (4.5,1) -- (4,2);
+      % \draw (4.5,1) -- ({0+5},2);
+      % \draw (5.5,1) -- ({4+5},2);
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:mixedreorder_inner}
+  \end{subfigure}
+  \caption{}
+  \label{fig:mixedreorder}
+\end{figure}
 
 \subsubsection{Enabling new research}
 
@@ -352,6 +507,8 @@ This is useful for variable layer extrusion and for mixed arity maps.
 % can do variable halo size to replace exchanges with redundant communication - used in sparse tiling
 % clever layout means we can exchange core, then owned, interleaving communication
 % PETSc Mat for parallel matrices
+
+% we assume ragged only works in serial
 
 \begin{figure}
   \centering
