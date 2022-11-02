@@ -207,6 +207,8 @@ Such a layout is shown in Figure~\ref{fig:vdat_pyop2}.
     }
     \label{fig:vdat_pyop3}
   \end{subfigure}
+  \caption{}
+  \label{fig:vdat_comparison}
 \end{figure}
 
 There are a number of advantages to this approach:
@@ -298,6 +300,8 @@ This approach is advantageous because it is much more natural to reason about me
 DMPlex restrictions naturally map points to points instead of points to nodes, making map composition tractable.
 The approach also facilitates: orienting \glspl{dof} (Section~\ref{sec:impl_orientation}), data layout optimisations (Section~\ref{sec:impl_datalayoutopt}), and extruded and other partially-structured meshes (Section~\ref{sec:future_partialstructure}).
 
+% TODO: Mention that this lets us do mixed
+
 \subsubsection{Maps}
 
 When we address some data, the provided data structure is associated with a particular multi-index.
@@ -347,6 +351,7 @@ This is sufficient for unstructured meshes but a necessity for partially-structu
 This is discussed in detail in Section~\ref{sec:future_partialstructure}.
 
 \subsubsection{Raggedness and sparsity}
+\label{sec:impl_datalayout_ragged}
 
 There are occasions where one needs a data structure where the extent of an inner dimension depends on an outer one.
 This occurs for example in variable layer extruded meshes - the extent of the inner dimension (the columns) is dependent upon the mesh point in the base mesh.
@@ -400,22 +405,14 @@ These operations map naturally to the different sub-axes of the data layout - th
 \subsubsection{Data layout transformations}
 \label{sec:impl_datalayoutopt}
 
-%HERE
-% TODO: Add a vector data layout example to go along with the hierarchies. Colour V0 and V1 differently
-
-% should support Gpu, inter-element vectorisation
-% AoSoA for vectorisation
-% tiling
-% mixed reordering
-
 \begin{figure}
   \centering
-  \begin{subfigure}{.48\textwidth}
+  \begin{subfigure}{.65\textwidth}
     \centering
     \begin{tikzpicture}[y=-1cm,scale=.75]
       \begin{scope}[xshift=3.25cm, yshift=0cm]
-        \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
-        \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
+        \filldraw[draw=black, fill=blue!60] (0,0) rectangle (1,1);
+        \filldraw[draw=black, fill=red!60] (1,0) rectangle (2,1);
         \node[at={(.5,.5)}, ptlabel] {$V_0$};
         \node[at={(1.5,.5)}, ptlabel] {$V_1$};
       \end{scope}
@@ -455,7 +452,23 @@ These operations map naturally to the different sub-axes of the data layout - th
     \label{fig:mixedreorder_outer}
   \end{subfigure}
   %
-  \begin{subfigure}{.48\textwidth}
+  \begin{subfigure}{.3\textwidth}
+    \centering
+    \begin{tikzpicture}[x=.8cm,y=-1cm]
+      \draw (0,0) .. controls (-.2,0) and (-.2,3) .. (0,3);
+      \draw (1,0) .. controls (1.2,0) and (1.2,3) .. (1,3);
+      \filldraw [fill=blue!60,rounded corners,draw=none]
+        (.1,.05) -- (.9,.05) -- (.9,1.45) -- (.1,1.45) -- cycle;
+      \filldraw [fill=red!60,rounded corners,draw=none]
+        (.1,1.55) -- (.9,1.55) -- (.9,2.95) -- (.1,2.95) -- cycle;
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:mixedreorder_outer_vec}
+  \end{subfigure}
+
+  \vspace{1em}
+ 
+  \begin{subfigure}{.65\textwidth}
     \centering
     \begin{tikzpicture}[y=-1cm,scale=.75]
       \begin{scope}[xshift=0cm,yshift=0cm]
@@ -471,44 +484,118 @@ These operations map naturally to the different sub-axes of the data layout - th
       \end{scope}
 
       \begin{scope}[xshift=1cm, yshift=-2cm]
-        \filldraw[draw=black, fill=white] (0,0) rectangle (1,1);
-        \filldraw[draw=black, fill=white] (1,0) rectangle (2,1);
+        \filldraw[draw=black, fill=blue!60] (0,0) rectangle (1,1);
+        \filldraw[draw=black, fill=red!60] (1,0) rectangle (2,1);
         \node[at={(.5,.5)}, ptlabel] {$V_0$};
         \node[at={(1.5,.5)}, ptlabel] {$V_1$};
       \end{scope}
 
-      % \draw (3.5,1) -- (0,2);
-      % \draw (4.5,1) -- (4,2);
-      % \draw (4.5,1) -- ({0+5},2);
-      % \draw (5.5,1) -- ({4+5},2);
+      \draw (1.5,1) -- (1,2);
+      \draw (2.5,1) -- (3,2);
     \end{tikzpicture}
     \caption{}
     \label{fig:mixedreorder_inner}
+  \end{subfigure}
+  %
+  \begin{subfigure}{.3\textwidth}
+    \centering
+    \begin{tikzpicture}[x=.8cm,y=-1cm]
+      \tikzstyle{entry} = [rounded corners,draw=none];
+      \tikzstyle{blue} = [entry,blue!60];
+      \tikzstyle{red} = [entry,red!60];
+      \draw (0,0) .. controls (-.2,0) and (-.2,3) .. (0,3);
+      \draw (1,0) .. controls (1.2,0) and (1.2,3) .. (1,3);
+      \filldraw [blue] (.1,.05) -- (.9,.05) -- (.9,.45) -- (.1,.45) -- cycle;
+      \filldraw [red] (.1,.55) -- (.9,.55) -- (.9,.95) -- (.1,.95) -- cycle;
+      \filldraw [blue] (.1,1.05) -- (.9,1.05) -- (.9,1.45) -- (.1,1.45) -- cycle;
+      \filldraw [red] (.1,1.55) -- (.9,1.55) -- (.9,1.95) -- (.1,1.95) -- cycle;
+      \filldraw [blue] (.1,2.05) -- (.9,2.05) -- (.9,2.45) -- (.1,2.45) -- cycle;
+      \filldraw [red] (.1,2.55) -- (.9,2.55) -- (.9,2.95) -- (.1,2.95) -- cycle;
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:mixedreorder_inner_vec}
   \end{subfigure}
   \caption{}
   \label{fig:mixedreorder}
 \end{figure}
 
+
+With this decomposition of data layouts in a flexible, declarative hierarchy, it is now relatively straightforward to reason about making \textit{data layout transformations} to improve properties such as the effective working-set size (Section~\ref{sec:background_opt_locality}).
+
+Some of the possible optimisations include:
+
+\begin{paragraph}{Swapping axes}
+\pyop3 makes it straightforward to swap a pair of \py{MultiAxis} such that the `inner' axis becomes the `outer' and vice versa.
+
+An example of this is shown in Figure~\ref{fig:mixedreorder}.
+Typically a `mixed' system like this - here formed of $V_0$ and $V_1$ - stores data in a blocked format (Figures~\ref{fig:mixedreorder_outer} and~\ref{fig:mixedreorder_outer_vec}).
+This means that the \glspl{dof} corresponding to the same mesh point for $V_0$ and $V_1$ are very far apart in memory.
+If they are both used in the local computation then this constitutes poor data locality.
+
+To rectify the situation, we can, when applicable, permute the axes such that the mixed components are stored per mesh point, adjacent in memory.
+An example of this is shown in Figures~\ref{fig:mixedreorder_inner} and~\ref{fig:mixedreorder_inner_vec}.
+\end{paragraph}
+
+\begin{paragraph}{Reordering data within axes}
+Once the axes have been ordered in the most advantageous way, we can now begin to rearrange the entries in a \py{MultiAxis} to maximise locality.
+In the context of meshes, these reorderings could correspond to, for example, an \gls{rcm} renumbering of the mesh entities or a different ordering of the elements up the columns of an extruded mesh.
+In addition to improving locality, one can also perform these reorderings in order to allow for efficient subset queries.
+Certain preconditioners require access to subsets of the mesh entities and the data layout can be modified so that the relevant \glspl{dof} are contiguous in memory.
+
+To implement this reordering, \pyop3 simply requires that a different layout function be given to the respective \py{AxisParts}.
+\end{paragraph}
+
+\subsubsection{Other locality optimisations}
+
+\pyop3's abstraction also enables code transformations such as vectorisation and tiling (Section~\ref{sec:background_opt_locality}).
+Such optimisations are not data layout transformations, but transformations of the iteration set (i.e. the multi-index).
+In both cases, the flat iteration over some axis needs to be transformed to a set of nested loops of the form
+
+\begin{minipage}{\textwidth}
+\begin{minted}[xleftmargin=4em]{c}
+for (int i=0; i<NOUTER; ++i) {
+  for (int j=0; j<NINNER; ++j) {
+    int k = i*NINNER + j;
+    ...
+  }
+}
+\end{minted}
+\end{minipage}
+
+In the case of vectorisation, \clang{NINNER} would correspond to the length of the vector lanes of the CPU, and if tiling it would be tailored to its cache sizes.
+
+It is valuable to note that, for unstructured meshes, tiling on its own is redundant as the amount of data shared between successive loops and prefetched by the hardware is already maximised by having an appropriate mesh numbering.
+The optimisation only becomes valuable when combined with kernel fusion to produce time tiling.
+Then the size of tiles should be chosen such that data required for both loops remains in cache between kernel invocations.
+
 \subsubsection{Enabling new research}
 
-% p-adaptivity
-% mixed mesh
-% mixed arity (PIC, pass layer count)
+In addition to the performance benefits espoused above, this new data layout abstraction should enable one to implement a number of new mathematical methods heretofore impossible to implement in \pyop2:
 
-We are able to describe `ragged' data layouts where the size of the array is selected from an additional array indexed by the `parent' indices.
-This is useful for variable layer extrusion and for mixed arity maps.
+\begin{itemize}
+  \item
+    \textbf{p-adaptivity}
+    In order to reduce the errors in a simulation, one may vary the polynomial degree of particular cells in a process known as p-adaptivity.
+    It is tricky to automate a stencil code for looping over the mesh because:
+    a) multiple local kernels are needed, one for each degree, and b) there are `hanging' \glspl{dof} at the boundaries between cells of differing degrees.
+    Problem (a) is trivial to resolve in \pyop3.
+    Rather than having a \py{MultiAxis} that is composed only of cells, edges and vertices (each a distinct \py{AxisPart}), additional \py{AxisParts} can be added such that mesh points of different degree are associated with a unique \py{AxisPart}.
+    Problem (b) is more challenging to solve and requires the addition of \textit{constraints} to the abstraction (Section~\ref{sec:future_constraints}).
+
+  \item
+    \textbf{Mixed meshes}
+    A mixed mesh is a mesh composed of multiple different types of polytope (e.g. triangles and squares).
+    Iterating over such a mesh poses the same fundamental problem as p-adaptivity: different local kernels are required depending on the polytope type.
+    Since \pyop3 is `mesh-aware' and can reason about the different classes of mesh points, this problem becomes trivial.
+
+  \item
+    \textbf{Particle-in-cell methods}
+    Particle-in-cell methods are a type of numerical method where the cells of a mesh are associated with a number of, possibly advecting, particles.
+    Since the number of particles differs between cells, a variable arity map is required to address them (Section~\ref{sec:impl_datalayout_ragged}).
+\end{itemize}
 
 \subsection{Parallel design}
 \label{sec:impl_parallel}
-
-\pyop3 has the same parallel design as \pyop2.
-
-% ghost/halo values for overlaps
-% can do variable halo size to replace exchanges with redundant communication - used in sparse tiling
-% clever layout means we can exchange core, then owned, interleaving communication
-% PETSc Mat for parallel matrices
-
-% we assume ragged only works in serial
 
 \begin{figure}
   \centering
@@ -696,12 +783,38 @@ This is useful for variable layer extrusion and for mixed arity maps.
     \node (p1name) at (1.5,4.2) {Process 1};
     \node (p2name) at (6.5,4.2) {Process 2};
   \end{tikzpicture}
-  \caption{}
+  \caption{
+    An example mesh distributed between two processes (red and blue).
+    The mesh is intended for vertex patches (shaded) and so the overlap is chosen such that all required \glspl{dof} are stored locally.
+    `Core' vertices are stored as circles and `owned' as diamonds.
+    The direction of halo exchanges is indicated by the arrows.
+  }
   \label{fig:halos}
 \end{figure}
 
+% same fundamental data types
+
+% how to do insertion into off-diagonal parts in PETSc? how would that work with my stuff?
+
+%\pyop3 has the same parallel design as \pyop2.
+% ghost/halo values for overlaps
+% globals with reductions
+% can do variable halo size to replace exchanges with redundant communication - used in sparse tiling
+% clever layout means we can exchange core, then owned, interleaving communication
+% PETSc Mat for parallel matrices
+
+% we assume ragged only works in serial
+
 % PETSc is scalable (cite?)
 % PyOP2 (via Firedrake assembly) has good weak scalability
+
+% mention strong scaling
+
+\subsection{Avoiding Python overhead}
+\label{sec:impl_overhead}
+
+% halo exchanges in C
+% do_loop(...) vs expr = loop(...) - easy to swap out data structures via **kwargs, weakref
 
 % also strong-scaling (but shown otherwise)
 % key is to minimise amount of Python in the hot loops via judicious caching, persistent objects and expanded codegen
@@ -709,8 +822,3 @@ This is useful for variable layer extrusion and for mixed arity maps.
 % use DG advection as an example - caching and persistent objects can be shown to be key
 % but now things like halo exchanges for valid halos (i.e. noops) have non-trivial cost -> move out of Python to the generated code.
 
-\subsection{Avoiding Python overhead}
-\label{sec:impl_overhead}
-
-% halo exchanges in C
-% do_loop(...) vs expr = loop(...) - easy to swap out data structures via **kwargs, weakref

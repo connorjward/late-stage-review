@@ -296,6 +296,7 @@ To use the example points (shown in red):
 \end{itemize}
 
 \subsection{Optimisations for stencil computations}
+\label{sec:background_opt}
 
 Depending on the local kernel, stencil application can be either compute- or memory-bound.
 If the kernel has high \gls{ai}, then the iteration will be compute-bound and throughput-oriented optimisations will be worthwhile.
@@ -309,6 +310,7 @@ One may wish to apply \textit{inter-element} vectorisation at the level of the s
 Such an approach has been implemented in (a branch of) \pyop2, and demonstrated to be performant~\cite{sunStudyVectorizationMatrixfree2020}.
 
 \subsubsection{Locality optimisations}
+\label{sec:background_opt_locality}
 
 From the roofline in Figure~\ref{fig:roofline} one can see that, for a memory-bound code (low \gls{ai}), dramatic speedups may be achieved by changing the level in the memory hierarchy at which the kernel operates.
 In this simplified figure this corresponds to being limited by ``Peak cache bandwidth'' instead of ``Peak main memory bandwidth''.
@@ -329,7 +331,7 @@ Common data locality optimisations for stencil-like applications include: \texti
 
 For unstructured meshes, a common optimisation is to renumber the mesh entities such that all entities in the stencil are `close', hence making use of spatial locality.
 It also helps with temporal locality since \glspl{dof} on faces will be reused between iterations.
-The reverse Cuthill-McKee algorithm is a common `cache-oblivious' way of reordering an unstructured mesh~\cite{cuthillReducingBandwidthSparse1969,langeEfficientMeshManagement2016}.
+The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstructured mesh~\cite{cuthillReducingBandwidthSparse1969,langeEfficientMeshManagement2016}.
 
 \subsubsection{Mesh structure}
 
@@ -485,7 +487,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       % setup
       \tkzSetUpStyle[
         postaction=decorate,
-        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
       ]{myarrow}
 
       % triangle
@@ -495,6 +497,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       \tkzDrawSegment[myarrow=stealth](v0,v1)
       \tkzDrawSegment[myarrow=stealth](v1,v2)
       \tkzDrawSegment[myarrow=stealth](v0,v2)
+      \tkzDrawPoints(v0,v1,v2)
 
       % edge dofs
       \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
@@ -504,17 +507,17 @@ However, to our knowledge, this is not performed by any existing stencil library
       \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
       \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
 
-      \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
       \node at (e0d0) {$a$};
-      \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
       \node at (e0d1) {$b$};
-      \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
       \node at (e1d0) {$a$};
-      \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
       \node at (e1d1) {$b$};
-      \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
       \node at (e2d0) {$a$};
-      \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
       \node at (e2d1) {$b$};
     \end{tikzpicture}
     \caption{}
@@ -527,7 +530,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       % setup
       \tkzSetUpStyle[
         postaction=decorate,
-        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
       ]{myarrow}
 
       % triangle
@@ -537,6 +540,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       \tkzDrawSegment[myarrow=stealth](v0,v1)
       \tkzDrawSegment[myarrow=stealth](v1,v2)
       \tkzDrawSegment[myarrow=stealth](v0,v2)
+      \tkzDrawPoints(v0,v1,v2)
 
       % edge dofs
       \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
@@ -546,17 +550,17 @@ However, to our knowledge, this is not performed by any existing stencil library
       \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
       \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
 
-      \filldraw [draw=black,fill=red!50] (e0d0) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
       \node at (e0d0) {$a$};
-      \filldraw [draw=black,fill=red!50] (e0d1) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
       \node at (e0d1) {$b$};
-      \filldraw [draw=black,fill=red!50] (e1d0) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
       \node at (e1d0) {$a$};
-      \filldraw [draw=black,fill=red!50] (e1d1) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
       \node at (e1d1) {$b$};
-      \filldraw [draw=black,fill=red!50] (e2d0) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
       \node at (e2d0) {$a$};
-      \filldraw [draw=black,fill=red!50] (e2d1) circle [radius=7pt];
+      \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
       \node at (e2d1) {$b$};
     \end{tikzpicture}
     \caption{}
@@ -571,7 +575,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       % setup
       \tkzSetUpStyle[
         postaction=decorate,
-        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
       ]{myarrow}
 
       % triangle
@@ -581,6 +585,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       \tkzDrawSegment[myarrow=stealth](v0,v1)
       \tkzDrawSegment[myarrow=stealth](v1,v2)
       \tkzDrawSegment[myarrow=stealth](v0,v2)
+      \tkzDrawPoints(v0,v1,v2)
 
       % edge dofs
       \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
@@ -628,7 +633,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       % setup
       \tkzSetUpStyle[
         postaction=decorate,
-        decoration={markings, mark=at position .5 with {\arrow[thick]{#1}} }
+        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
       ]{myarrow}
 
       % triangle
@@ -638,6 +643,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       \tkzDrawSegment[myarrow=stealth](v0,v1)
       \tkzDrawSegment[myarrow=stealth](v2,v1)
       \tkzDrawSegment[myarrow=stealth](v0,v2)
+      \tkzDrawPoints(v0,v1,v2)
 
       % edge dofs
       \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
