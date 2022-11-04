@@ -33,6 +33,24 @@ do_loop(
 )
 \end{minted}
 
+\subsection{Data types}
+
+Like \pyop2, \pyop3 has three main data types: \py{Globals}, \py{Dats} and \py{Mats}.
+These may be understand as data types aware of zero, one or two meshes respectively.
+
+A \py{Global} represents some, possibly vector-valued, quantity that is shared across all processes.
+It has no awareness of the mesh whatsoever.
+
+By contrast, a \py{Dat} is a vector associated with a given mesh, storing some set of values at each mesh point.
+It is uniquely associated with a single mesh and, since the mesh is distributed between processes, only a subset of the overall data structure is present on any single process.
+
+Lastly, a \py{Mat} can be thought of as representing the `overlap' between two (possibly the same) meshes.
+Abstractly, they are used to compute quantities that depend on the interaction between different mesh points.
+This can include the test and trial functions from \gls{fem}, or an interpolation matrix to interpolate values between different meshes.
+Since solving \glspl{pde} typically makes use of functions with \textit{local support} (i.e. functions whose value are zero except in some small region of the mesh), these matrices are typically very \textit{sparse} as non-zeros are only present in the regions where these supports overlap.
+
+For the \gls{fem}, where the cell integrals are defined using the closure operation, the overlap between test and trial functions is assumed to be the combination of the closures of each cell.
+
 \subsection{Just-in-time compilation}
 
 The execution pipeline is shown in Figure~\ref{fig:codegenproc}.
@@ -673,7 +691,9 @@ In addition to the performance benefits espoused above, this new data layout abs
       % vertices
       % \tkzDrawPoints[p1vert](p1v0,p1v1,p1v2,p1v3,p1v4,p1v5,p1v6,p1v7)  % core
       \tkzDrawPoints[p1vert,size=5](p1v4,p1v5,p1v6,p1v7)  % core
-      \tkzDrawPoints[p1vert,diamond,size=6](p1v8,p1v9,p1v10,p1v11)  % owned
+      % \tkzDrawPoints[p1vert,diamond,size=6](p1v8,p1v9,p1v10,p1v11)  % owned
+      \tkzDrawPoints[p1vert,diamond,size=6](p1v8,p1v9,p1v11)  % owned
+      \tkzDrawPoints[p1vert,diamond,size=6,draw=black](p1v10)  % owned
       \tkzDrawPoints[p2vert,diamond,opacity=.5,size=6](p1v12,p1v13,p1v14,p1v15)
 
       % debugging
@@ -692,7 +712,8 @@ In addition to the performance benefits espoused above, this new data layout abs
       % \filldraw[pattern={Hatch[distance=3mm,angle=45]},draw=black,rounded corners=2]
         (p1v7patch) -- (p1v11patch) -- (p1v15patch) -- (p1v14patch) -- (p1v9patch) --
         (p1v5patch) -- (p1v6patch) -- cycle;
-      \draw (p1v10) circle [radius=5pt];
+      % \draw (p1v10) circle [radius=5pt];
+      % \tkzDrawPoint[size=1pt](p1v10)
 
       % label "core" and "owned"
       \node (p1core) [inner sep=0pt,xshift=-20pt,yshift=20pt] at (p1v7) {\footnotesize core};
@@ -812,6 +833,8 @@ In addition to the performance benefits espoused above, this new data layout abs
 
 \subsection{Avoiding Python overhead}
 \label{sec:impl_overhead}
+
+We have chosen to write \pyop3 in Python... %why?
 
 % halo exchanges in C
 % do_loop(...) vs expr = loop(...) - easy to swap out data structures via **kwargs, weakref
