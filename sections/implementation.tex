@@ -309,6 +309,8 @@ For each \py{AxisPart}, and given an index into it ($i_x$), we use \textit{layou
 A layout function is a function that takes in an index and returns an offset.
 In the case of axes with constant stride this simply takes the form \py{off = iX * stride}, but for non-constant strides it would resemble \py{off = offsets[iX]}.
 
+The process of actually determining the address of a particular multi-index simply requires a \textit{pre-order tree visitor} algorithm to traverse the tree and accumulate the outputs of the layout functions at each level, before dispatching to the right child depending upon the `type' argument of the multi-index.
+
 One major challenge presented by this new layout is that axes are no longer homogeneous.
 In Figure~\ref{fig:vdat_pyop3} for instance, not all points have the same number of nodes per point.
 This means that one can no longer stride over the axis by a constant value, and instead a lookup table must be used.

@@ -4,6 +4,10 @@
 \subsection{Direct addressing for partially-structured meshes}
 \label{sec:future_partialstructure}
 
+% what is it?
+% why would we want it?
+% what is needed to make it happen? - maps get more complicated
+
 % stand to make a small memory saving - affects prefetch, loop unrolling, working set size, bandwidth stuff
 % not necessarily worth it... but permitted by abstraction
 
@@ -27,10 +31,6 @@ Under such a prescription, a map is therefore a \textit{function between multi-i
 
 \vspace{1em}
 
-\subsubsection{Extruded meshes}
-
-\subsubsection{Regular mesh refinement}
-
 % refinement 1
 \begin{tikzpicture}
 
@@ -53,38 +53,6 @@ Under such a prescription, a map is therefore a \textit{function between multi-i
 \end{tikzpicture}
 
 \vspace{1em}
-
-% refinement 2
-\begin{tikzpicture}
-
-  \tkzDefPoint(0,0){v0}
-  \tkzDefShiftPoint[v0](60:4){v1}
-  \tkzDefShiftPoint[v0](0:4){v2}
-  \tkzDrawPolygon(v0,v1,v2)
-
-  \tkzDefMidPoint(v0,v1) \tkzGetPoint{e0v0}
-  \tkzDefMidPoint(v1,v2) \tkzGetPoint{e1v0}
-  \tkzDefMidPoint(v2,v0) \tkzGetPoint{e2v0}
-
-  \tkzDrawSegment(e0v0,e1v0)
-  \tkzDrawSegment(e1v0,e2v0)
-  \tkzDrawSegment(e2v0,e0v0)
-
-  % note: this method is outdated - bisect instead
-  \begin{pgfonlayer}{background}
-    \tkzDefBarycentricPoint(e0v0=25,v1=1,e1v0=1,e2v0=1) \tkzGetPoint{e0v0inner}
-    \tkzDefBarycentricPoint(e0v0=1,v1=25,e1v0=1,e2v0=1) \tkzGetPoint{v1inner}
-    \tkzDefBarycentricPoint(e0v0=1,v1=1,e1v0=25,e2v0=1) \tkzGetPoint{e1v0inner}
-    \tkzDefBarycentricPoint(e0v0=1,v1=1,e1v0=1,e2v0=25) \tkzGetPoint{e2v0inner}
-
-
-    \draw[rounded corners] (e0v0inner) -- (v1inner) -- (e1v0inner) -- (e2v0inner) -- cycle;
-  \end{pgfonlayer}
-
-\end{tikzpicture}
-
-% \vspace{1em}
-\pagebreak
 
 % refinement 3
 \begin{tikzpicture}
@@ -242,100 +210,111 @@ Under such a prescription, a map is therefore a \textit{function between multi-i
   \tkzDrawSegment(e0v0,c0e2v0)
 \end{tikzpicture}
 
-\vspace{1em}
-% vertex refinement
-\begin{tikzpicture}
 
-  \tkzDefPoint(0,0){cvert}
-  \tkzDrawPoint(cvert) \tkzLabelPoint[above](cvert){$(v_i,)$}
+\begin{figure}
+  \centering
 
-  \draw[->] (1,0) -> (2,0);
+  % vertex refinement
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tkzDefPoint(2,0){cvert}
+      \tkzDrawPoint(cvert) 
+      \draw[->] (5,0) -> (6,0);
+      \tkzDefPoint(9,0){fvert}
+      \tkzDrawPoint(fvert)
 
-  \tkzDefPoint(3,0){fvert}
-  \tkzDrawPoint(fvert) \tkzLabelPoint[above](fvert){$(v_i,v_0)$}
+      \begin{scope}[overlay]
+        \tkzLabelPoint[above](cvert){$(v_i,)$}
+        \tkzLabelPoint[above](fvert){$(v_i,v_0)$}
+      \end{scope}
+    \end{tikzpicture}
+    \caption{}
+  \end{subfigure}
 
+  % edge refinement
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tkzDefPoint(0,0){cstart}
+      \tkzDefPoint(4,0){cend}
+      \tkzDrawSegment(cstart,cend)
+      \tkzLabelSegment(cstart,cend){$(e_i,)$}
 
-\end{tikzpicture}
+      \draw[->] (5,0) -> (6,0);
 
-\vspace{2em}
+      \tkzDefPoint(7,0){fstart}
+      \tkzDefPoint(11,0){fend}
+      \tkzDefMidPoint(fstart,fend) \tkzGetPoint{fmid}
 
-% edge refinement
-\begin{tikzpicture}
+      \tkzDrawSegment(fstart,fmid) \tkzLabelSegment(fstart,fmid){$(e_i,e_0)$}
+      \tkzDrawSegment(fmid,fend) \tkzLabelSegment(fmid,fend){$(e_i,e_1)$}
+      \tkzDrawPoint(fmid) \tkzLabelPoint[below](fmid){$(e_i,v_0)$}
+    \end{tikzpicture}
+    \caption{}
+  \end{subfigure}
 
-  \tkzDefPoint(0,0){cstart}
-  \tkzDefPoint(3,0){cend}
-  \tkzDrawSegment(cstart,cend)
-  \tkzLabelSegment(cstart,cend){$(e_i,)$}
+  % cell refinement
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tkzDefPoint(0,0){v0}
+      \tkzDefShiftPoint[v0](60:4){v1}
+      \tkzDefShiftPoint[v0](0:4){v2}
+      \tkzDrawPolygon[style=dashed](v0,v1,v2)
 
-  \draw[->] (4,0) -> (5,0);
+      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0}
+      \tkzLabelPoint[centered](c0){$c_i$}
 
-  \tkzDefPoint(6,0){fstart}
-  \tkzDefPoint(11,0){fend}
-  \tkzDefMidPoint(fstart,fend) \tkzGetPoint{fmid}
+      \draw[->] (5,{sqrt(3)}) -- (6,{sqrt(3)});
 
-  \tkzDrawSegment(fstart,fmid) \tkzLabelSegment(fstart,fmid){$(e_i,e_0)$}
-  \tkzDrawSegment(fmid,fend) \tkzLabelSegment(fmid,fend){$(e_i,e_1)$}
-  \tkzDrawPoint(fmid) \tkzLabelPoint[below](fmid){$(e_i,v_0)$}
+      \tkzDefPoint(7,0){fv0}
+      \tkzDefShiftPoint[fv0](60:4){fv1}
+      \tkzDefShiftPoint[fv0](0:4){fv2}
+      \tkzDrawPolygon[style=dashed](fv0,fv1,fv2)
 
-\end{tikzpicture}
+      \tkzDefMidPoint(fv0,fv1) \tkzGetPoint{fe0}
+      \tkzDefMidPoint(fv1,fv2) \tkzGetPoint{fe1}
+      \tkzDefMidPoint(fv2,fv0) \tkzGetPoint{fe2}
 
-\vspace{2em}
+      \tkzDrawSegment(fe0,fe1)
+      \tkzDrawSegment(fe1,fe2)
+      \tkzDrawSegment(fe2,fe0)
 
-% cell refinement
-\begin{tikzpicture}
+      \tkzDefBarycentricPoint(fv0=1,fe0=1,fe2=1) \tkzGetPoint{fc0}
+      \tkzLabelPoint[centered](fc0){$(c_i,c_0)$}
 
-  \tkzDefPoint(0,0){v0}
-  \tkzDefShiftPoint[v0](60:5){v1}
-  \tkzDefShiftPoint[v0](0:5){v2}
-  \tkzDrawPolygon[style=dashed](v0,v1,v2)
+      \tkzDefBarycentricPoint(fe0=1,fe1=1,fe2=1) \tkzGetPoint{fc1}
+      \tkzLabelPoint[centered](fc1){$(c_i,c_1)$}
 
-  \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0}
-  \tkzLabelPoint[centered](c0){$c_i$}
+      \tkzDefBarycentricPoint(fv1=1,fe0=1,fe1=1) \tkzGetPoint{fc2}
+      \tkzLabelPoint[centered](fc2){$(c_i,c_2)$}
 
-  \draw[->] (5,{5/4*sqrt(3)}) -- (6,{5/4*sqrt(3)});
+      \tkzDefBarycentricPoint(fv2=1,fe1=1,fe2=1) \tkzGetPoint{fc3}
+      \tkzLabelPoint[centered](fc3){$(c_i,c_3)$}
 
-  \tkzDefPoint(7,0){fv0}
-  \tkzDefShiftPoint[fv0](60:5){fv1}
-  \tkzDefShiftPoint[fv0](0:5){fv2}
-  \tkzDrawPolygon[style=dashed](fv0,fv1,fv2)
+      % edges (2/3 along)
+      \begin{scope}[overlay]
+        \tkzDefBarycentricPoint(fe2=1,fe0=2) \tkzGetPoint{e0labeldest}
+        \tkzDefBarycentricPoint(fe0=1,fe1=2) \tkzGetPoint{e1labeldest}
+        \tkzDefBarycentricPoint(fe1=2,fe2=1) \tkzGetPoint{e2labeldest}
 
-  \tkzDefMidPoint(fv0,fv1) \tkzGetPoint{fe0}
-  \tkzDefMidPoint(fv1,fv2) \tkzGetPoint{fe1}
-  \tkzDefMidPoint(fv2,fv0) \tkzGetPoint{fe2}
+        \node [xshift=-1.6cm,yshift=.2cm] (e0labelsrc) at (e0labeldest) {$(c_i,e_0)$};
+        \draw (e0labelsrc) -- (e0labeldest);
 
-  \tkzDrawSegment(fe0,fe1)
-  \tkzDrawSegment(fe1,fe2)
-  \tkzDrawSegment(fe2,fe0)
+        \node [xshift=1.2cm,yshift=.9cm] (e1labelsrc) at (e1labeldest) {$(c_i,e_1)$};
+        \draw (e1labelsrc) -- (e1labeldest);
 
-  \tkzDefBarycentricPoint(fv0=1,fe0=1,fe2=1) \tkzGetPoint{fc0}
-  \tkzLabelPoint[centered](fc0){$(c_i,c_0)$}
+        \node [xshift=1.5cm,yshift=.4cm] (e2labelsrc) at (e2labeldest) {$(c_i,e_2)$};
+        \draw (e2labelsrc) -- (e2labeldest);
+      \end{scope}
+    \end{tikzpicture}
+    \caption{}
+  \end{subfigure}
 
-  \tkzDefBarycentricPoint(fe0=1,fe1=1,fe2=1) \tkzGetPoint{fc1}
-  \tkzLabelPoint[centered](fc1){$(c_i,c_1)$}
-
-  \tkzDefBarycentricPoint(fv1=1,fe0=1,fe1=1) \tkzGetPoint{fc2}
-  \tkzLabelPoint[centered](fc2){$(c_i,c_2)$}
-
-  \tkzDefBarycentricPoint(fv2=1,fe1=1,fe2=1) \tkzGetPoint{fc3}
-  \tkzLabelPoint[centered](fc3){$(c_i,c_3)$}
-
-  % edges (2/3 along)
-  \tkzDefBarycentricPoint(fe2=1,fe0=2) \tkzGetPoint{e0labeldest}
-  \tkzDefBarycentricPoint(fe0=1,fe1=2) \tkzGetPoint{e1labeldest}
-  \tkzDefBarycentricPoint(fe1=2,fe2=1) \tkzGetPoint{e2labeldest}
-
-  \node [xshift=-1.6cm,yshift=.2cm] (e0labelsrc) at (e0labeldest) {$(c_i,e_0)$};
-  \draw (e0labelsrc) -- (e0labeldest);
-
-  \node [xshift=1.2cm,yshift=.9cm] (e1labelsrc) at (e1labeldest) {$(c_i,e_1)$};
-  \draw (e1labelsrc) -- (e1labeldest);
-
-  \node [xshift=1.5cm,yshift=.4cm] (e2labelsrc) at (e2labeldest) {$(c_i,e_2)$};
-  \draw (e2labelsrc) -- (e2labeldest);
-
-
-
-\end{tikzpicture}
+  \caption{}
+  \label{}
+\end{figure}
 
 % one could introduce a proper tensor language to express things (like Simit) - currently only
 % focussed on the packing part
