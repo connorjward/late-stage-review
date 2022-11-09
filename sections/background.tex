@@ -334,6 +334,7 @@ It also helps with temporal locality since \glspl{dof} on faces will be reused b
 The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstructured mesh~\cite{cuthillReducingBandwidthSparse1969,langeEfficientMeshManagement2016}.
 
 \subsubsection{Mesh structure}
+\label{sec:background_structure}
 
 As well as reordering data to reduce the effective working-set size, one can sometimes exploit the structure of the mesh itself to reduce the \textit{actual} working-set size.
 
@@ -446,7 +447,7 @@ As a fraction of the structured case, the extra data required by the unstructure
 which, since $d \geq 1$, bounds the extra data volume at 25\% of the structured case.
 
 Taking into consideration that this represents a reasonable worst-case example - stencils frequently admit more than two data structures and often have more than one \gls{dof} per point - the performance benefits of direct addressing are not very dramatic compared with the possible order-of-magnitude improvements that one can get from a correct data ordering and iteration prescription.
-Though we do address adding support for partially-structured meshes in Section~\ref{sec:future_partialstructure}, initial work on \pyop3 targets considerations of data layout instead.
+Though we do address adding support for partially-structured meshes in Section~\ref{sec:future_partialstructure}, initial work on \pyop3 does not focus on it.
 
 \subsection{Orienting degrees-of-freedom}
 

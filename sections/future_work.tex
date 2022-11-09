@@ -4,213 +4,42 @@
 \subsection{Direct addressing for partially-structured meshes}
 \label{sec:future_partialstructure}
 
-% what is it?
-% why would we want it?
-% what is needed to make it happen? - maps get more complicated
+Depending upon the application, certain simulations use meshes that possess `partial structure'.
+That is, meshes that possess both unstructured components and structured components.
+In general, the structure found in these meshes can be classified as either \textit{refinement} or \textit{extrusion}.
 
-% stand to make a small memory saving - affects prefetch, loop unrolling, working set size, bandwidth stuff
-% not necessarily worth it... but permitted by abstraction
+A refined mesh is a mesh where some unstructured `coarse' mesh is refined by replacing cells of the mesh with multiple, smaller cells.
+Edges and vertices are also inserted to keep appropriate connectivity, though \textit{hanging nodes} may occur if the refinement is non-conforming (see Section~\ref{sec:future_constraints}).
+An example refined mesh is shown in Figure~\ref{fig:refined_patch}.
 
-% below are unified by "mesh transformation" approach in DMPlex - should be possible to reconstruct
-% data hierarchy by inspecting labels.
+By contrast, an extruded mesh is created by taking an unstructured `base' mesh and extruding it into some number of layers.
+This results in a mesh composed of columns (e.g. Figure~\ref{fig:extruded}).
 
-% relax constraint that a map cannot have parents
-Under such a prescription, a map is therefore a \textit{function between multi-indexes} of the form
+For refined meshes the partial structure comes from having a finite number of possible refinement patterns.
+Given a point in the refined mesh and a refinement pattern, it should be possible to address stencils without needing a lookup table for every single point as one can reason about the connectivity.
+For extruded meshes the partial structure exists within the columns - each layer can be addressed directly using offsets given a starting point at the bottom cell.
 
-\vspace{1em}
+The benefit to using partially structured meshes is that the memory volume of the simulation can be reduced which, in a memory-bound computation, will directly lead to speedup.
+This is discussed in detail in Section~\ref{sec:background_structure} where we observed that the savings in memory volume are actually not that great, with a best case of 25\%.
+Since the potential benefits are limited, we have not implemented meshes with partial structure in \pyop3 yet.
+This section exists to demonstrate that our implementation does not prohibit making such optimisations in the future, and that in fact they would be relatively simple to implement as a consequence of our mesh-aware data layout.
 
-\begin{equation*}
-  \begin{pmatrix} (t_1, i_1) \\ (t_2, i_2) \\ \dots \\ (t_n, i_n) \end{pmatrix}
-  \to
-  \begin{pmatrix} (u^1_1, j^1_1) \\ (u^1_2, j^1_2) \\ \dots \\ (u^1_{k_1}, j^1_{k_1}) \end{pmatrix}
-  ,
-  \begin{pmatrix} (u^2_1, j^2_1) \\ (u^2_2, j^2_2) \\ \dots \\ (u^2_{k_2}, j^2_{k_2}) \end{pmatrix}
-  , \dots ,
-  \begin{pmatrix} (u^m_1, j^m_1) \\ (u^m_2, j^m_2) \\ \dots \\ (u^m_{k_m}, j^m_{k_m}) \end{pmatrix}.
-\end{equation*}
+\subsubsection{A unifying abstraction: mesh transformations}
 
-\vspace{1em}
+To handle refinement and extrusion, DMPlex has a convenient way of unifying the two.
+Termed \textit{mesh transformations}, the points in the input mesh are modified via some \textit{production rule}, resulting in a new, transformed, mesh.
+Some example production rules are shown in Figures~\ref{fig:transform_refinement} (refinement) and~\ref{fig:transform_extrusion} (extrusion).
+It is important to note that the production rule does not produce a `complete' cell - frequently only cell interiors without edges or edges without vertices are produced in the transformation.
+This is necessary because it constrains each point in the transformed mesh to only have a single parent, making reasoning about structure much easier.
 
-% refinement 1
-\begin{tikzpicture}
+Note that there are a great many more production rules that are not shown here.
+We have not included refinement rules for 3D polytopes (e.g. tetrahedra) and quadrilaterals are skipped.
+Also, in some cases there are multiple ways to refine a point, for example a triangle can be `green' refined by connecting one vertex with the midpoint of the opposite edge~\cite{bankRefinementAlgorithmDynamic}.
+Lastly, it should also be remarked that some transformations are naturally parametric.
+For example extruding a mesh requires the number of layers to insert.
+Likewise we could consider refining an edge, say, into 3 or more segments rather than just 2 (Figure~\ref{fig:transform_refinement_edge}).
 
-  \tkzDefPoint(0,0){v0}
-  \tkzDefShiftPoint[v0](60:4){v1}
-  \tkzDefShiftPoint[v0](0:4){v2}
-  \tkzDrawPolygon(v0,v1,v2)
-
-  \tkzLabelPoint[below left](v0){$v_0$}
-  \tkzLabelPoint[above](v1){$v_1$}
-  \tkzLabelPoint[below right](v2){$v_2$}
-
-  \tkzLabelSegment(v0,v1){$e_0$}
-  \tkzLabelSegment(v1,v2){$e_1$}
-  \tkzLabelSegment(v2,v0){$e_2$}
-
-  \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0}
-  \tkzLabelPoint[centered](c0){$c_0$}
-
-\end{tikzpicture}
-
-\vspace{1em}
-
-% refinement 3
-\begin{tikzpicture}
-
-  \tkzDefPoint(0,0){v0}
-  \tkzDefShiftPoint[v0](60:4){v1}
-  \tkzDefShiftPoint[v0](0:4){v2}
-  \tkzDrawPolygon(v0,v1,v2)
-
-  \tkzDefMidPoint(v0,v1) \tkzGetPoint{e0v0}
-  \tkzDefMidPoint(v1,v2) \tkzGetPoint{e1v0}
-  \tkzDefMidPoint(v2,v0) \tkzGetPoint{e2v0}
-
-  \tkzDrawSegment(e0v0,e1v0)
-  \tkzDrawSegment(e1v0,e2v0)
-  \tkzDrawSegment(e2v0,e0v0)
-
-  \tkzDefMidPoint(e1v0,v2) \tkzGetPoint{e1e1v0}
-  \tkzDefMidPoint(v2,e2v0) \tkzGetPoint{e2e0v0}
-  \tkzDefMidPoint(e1v0,e2v0) \tkzGetPoint{c0e2v0}
-
-  \tkzDrawSegment(e1e1v0,e2e0v0)
-  \tkzDrawSegment(e2e0v0,c0e2v0)
-  \tkzDrawSegment(c0e2v0,e1e1v0)
-
-  % patch
-  \begin{pgfonlayer}{background}
-    % find points by bisecting the angles
-    \tkzDefShiftPoint[e0v0](-30:0.15){e0v0inner}
-    \tkzDefShiftPoint[e1v0](-120:0.1){e1v0inner}
-    \tkzDefShiftPoint[e1e1v0](150:0.15){e1e1v0inner}
-    \tkzDefShiftPoint[c0e2v0](120:0.1){c0e2v0inner}
-    \tkzDefShiftPoint[e2v0](90:0.15){e2v0inner}
-
-    % source: https://tikz.dev/base-paths#sec-102.12
-    \pgfsetcornersarced{\pgfpoint{1mm}{1mm}}
-    \filldraw[color=blue!20] (e0v0inner) -- (e1v0inner) -- (e1e1v0inner) -- (c0e2v0inner) -- (e2v0inner) -- cycle;
-    \pgfsetcornersarced{\pgfpointorigin}
-  \end{pgfonlayer}
-
-  % add labels
-  \tkzDefBarycentricPoint(e0v0=1,e1v0=1,e2v0=1) \tkzGetPoint{c0c1}
-  \node [xshift=-2cm,yshift=.8cm] (c0c1label) at (c0c1) {$(c_i,c_1)$};
-  \draw (c0c1label) -- (c0c1);
-
-  \tkzDefMidPoint(e1v0,c0e2v0) \tkzGetPoint{c0e2}
-  \node [xshift=2cm,yshift=.8cm] (c0e2label) at (c0e2) {$(c_i,e_2,e_0)$};
-  \draw (c0e2label) -- (c0e2);
-
-  \tkzDefBarycentricPoint(e1v0=1,e1e1v0=1,c0e2v0=1) \tkzGetPoint{c0c3c2}
-  \node [xshift=2cm,yshift=-.2cm] (c0c3c2label) at (c0c3c2) {$(c_i,c_3,c_2)$};
-  \draw (c0c3c2label) -- (c0c3c2);
-
-\end{tikzpicture}
-
-\vspace{2em}
-
-% data layout for patch
-\begin{tikzpicture}[y=-1cm]
-  \begin{scope}[xshift=1.5cm, yshift=0cm]
-    \fill[lightgray] (0,0) rectangle (4,1);
-    \filldraw[draw=black, fill=white] (1.5,0) rectangle ++ (1,1);
-    \node[at={(2,.5)}, ptlabel] {$c_i$};
-    \draw (0,0) -- (4,0);
-    \draw (0,1) -- (4,1);
-  \end{scope}
-
-  \begin{scope}[xshift=.5cm, yshift=-2cm]
-    \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=blue!20] (1,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (3,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (4,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (5,0) rectangle ++ (1,1);
-    \filldraw[draw=black, fill=white] (6,0) rectangle ++ (1,1);
-    \node[at={(.5,.5)}, ptlabel] {$c_0$};
-    \node[at={(1.5,.5)}, ptlabel] {$c_1$};
-    \node[at={(2.5,.5)}, ptlabel] {$c_2$};
-    \node[at={(3.5,.5)}, ptlabel] {$c_3$};
-    \node[at={(4.5,.5)}, ptlabel] {$e_0$};
-    \node[at={(5.5,.5)}, ptlabel] {$e_1$};
-    \node[at={(6.5,.5)}, ptlabel] {$e_2$};
-
-    % \draw[->] (2.8,-1) .. controls ([yshift=-.4cm] 2.6,-1) and ([yshift=.6cm] 1,0) .. (.8,0);
-    % \draw[->] (3,-1) .. controls ([yshift=-.6cm] 3,-1) and ([yshift=1cm] 3.5,0) .. (3.5,0);
-    % \draw[->] (3.2,-1) .. controls ([yshift=-.4cm] 3,-1) and ([yshift=.6cm] 6,0) .. (6.2,0);
-  \end{scope}
-
-  \begin{scope}[xshift=0cm, yshift=-4cm]
-    % c3
-    \begin{scope}[xshift=0cm]
-      \fill[lightgray] (0,0) rectangle (4,1);
-      \filldraw[draw=black, fill=white] (.5,0) rectangle ++ (1,1);
-      \filldraw[draw=black, fill=blue!20] (1.5,0) rectangle ++ (1,1);
-      \filldraw[draw=black, fill=white] (2.5,0) rectangle ++ (1,1);
-      \node[at={(1,.5)}, ptlabel] {$c_1$};
-      \node[at={(2,.5)}, ptlabel] {$c_2$};
-      \node[at={(3,.5)}, ptlabel] {$c_3$};
-      \draw (0,0) -- (4,0);
-      \draw (0,1) -- (4,1);
-      % \draw[->] (4,-1) .. controls ([yshift=-.7cm] 4,-1) and ([yshift=1cm] 2,0) .. (2,0);
-    \end{scope}
-
-    % e2
-    \begin{scope}[xshift=5cm]
-      \filldraw[draw=black, fill=blue!20] (0,0) rectangle ++ (1,1);
-      \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
-      \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
-      \node[at={(.5,.5)}, ptlabel] {$e_0$};
-      \node[at={(1.5,.5)}, ptlabel] {$e_1$};
-      \node[at={(2.5,.5)}, ptlabel] {$v_0$};
-      % \draw[->] (2,-1) .. controls ([yshift=-.7cm] 2,-1) and ([yshift=1cm] .5,0) .. (.5,0);
-    \end{scope}
-  \end{scope}
-
-  \draw ({1.5+1.5},1) -- ({0+.5},2);
-  \draw ({2.5+1.5},1) -- ({7+.5},2);
-
-  \draw ({2+1.5},3) -- ({0+0},4);
-  \draw ({3+1.5},3) -- ({4+0},4);
-
-  \draw ({5+1.5},3) -- ({0+5},4);
-  \draw ({6+1.5},3) -- ({3+5},4);
-\end{tikzpicture}
-
-\vspace{2em}
-
-
-\vspace{2em}
-
-% alt refinement 3
-\begin{tikzpicture}
-
-  \tkzDefPoint(0,0){v0}
-  \tkzDefShiftPoint[v0](60:4){v1}
-  \tkzDefShiftPoint[v0](0:4){v2}
-  \tkzDrawPolygon(v0,v1,v2)
-
-  \tkzDefMidPoint(v0,v1) \tkzGetPoint{e0v0}
-  \tkzDefMidPoint(v1,v2) \tkzGetPoint{e1v0}
-  \tkzDefMidPoint(v2,v0) \tkzGetPoint{e2v0}
-
-  \tkzDrawSegment(e0v0,e1v0)
-  \tkzDrawSegment(e1v0,e2v0)
-  \tkzDrawSegment(e2v0,e0v0)
-
-  \tkzDefMidPoint(e1v0,v2) \tkzGetPoint{e1e1v0}
-  \tkzDefMidPoint(v2,e2v0) \tkzGetPoint{e2e0v0}
-  \tkzDefMidPoint(e1v0,e2v0) \tkzGetPoint{c0e2v0}
-
-  \tkzDrawSegment(e1e1v0,e2e0v0)
-  \tkzDrawSegment(e2e0v0,c0e2v0)
-  \tkzDrawSegment(c0e2v0,e1e1v0)
-
-  \tkzDrawSegment(e0v0,c0e2v0)
-\end{tikzpicture}
-
-
+% refinement transformation examples
 \begin{figure}
   \centering
 
@@ -229,8 +58,10 @@ Under such a prescription, a map is therefore a \textit{function between multi-i
         \tkzLabelPoint[above](fvert){$(v_i,v_0)$}
       \end{scope}
     \end{tikzpicture}
-    \caption{}
+    \caption{Vertex refinement - a no-op.}
   \end{subfigure}
+
+  \vspace{1em}
 
   % edge refinement
   \begin{subfigure}{\textwidth}
@@ -251,8 +82,11 @@ Under such a prescription, a map is therefore a \textit{function between multi-i
       \tkzDrawSegment(fmid,fend) \tkzLabelSegment(fmid,fend){$(e_i,e_1)$}
       \tkzDrawPoint(fmid) \tkzLabelPoint[below](fmid){$(e_i,v_0)$}
     \end{tikzpicture}
-    \caption{}
+    \caption{Edge refinement.}
+    \label{fig:transform_refinement_edge}
   \end{subfigure}
+
+  \vspace{1em}
 
   % cell refinement
   \begin{subfigure}{\textwidth}
@@ -309,29 +143,342 @@ Under such a prescription, a map is therefore a \textit{function between multi-i
         \draw (e2labelsrc) -- (e2labeldest);
       \end{scope}
     \end{tikzpicture}
-    \caption{}
+    \caption{
+      A possible refinement of a triangle.
+      Note that no vertices are produced by the transformation and that the dashed lines indicate the production of a cell interior but not all its edges.
+    }
   \end{subfigure}
 
+  \caption{Example refinement transformations.}
+  \label{fig:transform_refinement}
+\end{figure}
+
+% extrusion transformation examples
+\begin{figure}
+  \centering
+
+  % vertex extrusion
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tkzDefPoint(2,1){cvert}
+      \tkzDrawPoint(cvert) 
+      \draw[->] (5,1) -> (6,1);
+      \tkzDefPoint(9,0){fvert0}
+      \tkzDefPoint(9,2){fvert1}
+      \tkzDrawPoints(fvert0,fvert1)
+      \tkzDrawSegment(fvert0,fvert1)
+      \tkzDefShiftPoint[fvert1](0,1){up}
+      \tkzDrawSegment[dotted](fvert1,up)
+
+      \begin{scope}[overlay]
+        \tkzLabelPoint[above](cvert){$(v_i,)$}
+        \tkzLabelPoint[right](fvert0){$(v_i,v_0)$}
+        \tkzLabelPoint[right](fvert1){$(v_i,v_1)$}
+        \tkzLabelSegment[left](fvert0,fvert1){$(v_i,e_0)$}
+      \end{scope}
+    \end{tikzpicture}
+    \caption{Vertex extrusion.}
+    \label{}
+  \end{subfigure}
+
+  \vspace{1em}
+
+  % edge extrusion
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tkzDefPoint(0,1){cstart}
+      \tkzDefPoint(4,1){cend}
+      \tkzDrawSegment(cstart,cend)
+      \tkzLabelSegment(cstart,cend){$(e_i,)$}
+
+      \draw[->] (5,1) -> (6,1);
+
+      \tkzDefPoint(7,0){f0}
+      \tkzDefPoint(11,0){f1}
+      \tkzDefShiftPoint[f0](0,2){f2}
+      \tkzDefShiftPoint[f1](0,2){f3}
+      \tkzDrawSegment(f0,f1)
+      \tkzDrawSegment(f2,f3)
+      \tkzDrawSegment[densely dashed](f0,f2)
+      \tkzDrawSegment[densely dashed](f1,f3)
+      \tkzDefShiftPoint[f2](0,1){upl}
+      \tkzDefShiftPoint[f3](0,1){upr}
+      \tkzDrawSegments[dotted](f2,upl f3,upr)
+
+      % labels
+      \begin{scope}[overlay]
+        \tkzLabelSegment[above](f0,f1){$(e_i,e_0)$}
+        \tkzLabelSegment[above](f2,f3){$(e_i,e_1)$}
+        \tkzDefBarycentricPoint(f0=1,f1=1,f2=1,f3=1) \tkzGetPoint{fmid}
+        \tkzLabelPoint[centered](fmid){$(e_i,c_0)$}
+      \end{scope}
+    \end{tikzpicture}
+    \caption{
+      Edge extrusion.
+      Note that no vertices are produced in the transformation as they would be produced by the vertices incident on the initial edge.
+    }
+    \label{}
+  \end{subfigure}
+  \caption{
+    Example extrusion transformations.
+    The dotted lines indicate that the transformation may produce more than a single layer.
+  }
+  \label{fig:transform_extrusion}
+\end{figure}
+
+\subsubsection{Implementation}
+
+% here!
+% 2. implement using multiaxes (show two figures: refined (done), extruded)
+% reconstruct hierarchy using labels
+
+% refined patch example
+\begin{figure}
+  \centering
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+
+      \tkzDefPoint(0,0){v0}
+      \tkzDefShiftPoint[v0](60:4){v1}
+      \tkzDefShiftPoint[v0](0:4){v2}
+      \tkzDrawPolygon(v0,v1,v2)
+
+      \tkzDefMidPoint(v0,v1) \tkzGetPoint{e0v0}
+      \tkzDefMidPoint(v1,v2) \tkzGetPoint{e1v0}
+      \tkzDefMidPoint(v2,v0) \tkzGetPoint{e2v0}
+
+      \tkzDrawSegment(e0v0,e1v0)
+      \tkzDrawSegment(e1v0,e2v0)
+      \tkzDrawSegment(e2v0,e0v0)
+
+      \tkzDefMidPoint(e1v0,v2) \tkzGetPoint{e1e1v0}
+      \tkzDefMidPoint(v2,e2v0) \tkzGetPoint{e2e0v0}
+      \tkzDefMidPoint(e1v0,e2v0) \tkzGetPoint{c0e2v0}
+
+      \tkzDrawSegment(e1e1v0,e2e0v0)
+      \tkzDrawSegment(e2e0v0,c0e2v0)
+      \tkzDrawSegment(c0e2v0,e1e1v0)
+
+      % patch
+      \begin{pgfonlayer}{background}
+        % find points by bisecting the angles
+        \tkzDefShiftPoint[e0v0](-30:0.15){e0v0inner}
+        \tkzDefShiftPoint[e1v0](-120:0.1){e1v0inner}
+        \tkzDefShiftPoint[e1e1v0](150:0.15){e1e1v0inner}
+        \tkzDefShiftPoint[c0e2v0](120:0.1){c0e2v0inner}
+        \tkzDefShiftPoint[e2v0](90:0.15){e2v0inner}
+
+        % source: https://tikz.dev/base-paths#sec-102.12
+        \pgfsetcornersarced{\pgfpoint{1mm}{1mm}}
+        \filldraw[color=blue!20] (e0v0inner) -- (e1v0inner) -- (e1e1v0inner) -- (c0e2v0inner) -- (e2v0inner) -- cycle;
+        \pgfsetcornersarced{\pgfpointorigin}
+      \end{pgfonlayer}
+
+      % add labels
+      \tkzDefBarycentricPoint(e0v0=1,e1v0=1,e2v0=1) \tkzGetPoint{c0c1}
+      \node [xshift=-2cm,yshift=.8cm] (c0c1label) at (c0c1) {$(c_i,c_1)$};
+      \draw (c0c1label) -- (c0c1);
+
+      \tkzDefMidPoint(e1v0,c0e2v0) \tkzGetPoint{c0e2}
+      \node [xshift=2cm,yshift=.8cm] (c0e2label) at (c0e2) {$(c_i,e_2,e_0)$};
+      \draw (c0e2label) -- (c0e2);
+
+      \tkzDefBarycentricPoint(e1v0=1,e1e1v0=1,c0e2v0=1) \tkzGetPoint{c0c3c2}
+      \node [xshift=2cm,yshift=-.2cm] (c0c3c2label) at (c0c3c2) {$(c_i,c_3,c_2)$};
+      \draw (c0c3c2label) -- (c0c3c2);
+    \end{tikzpicture}
+    \caption{}
+    \label{fig:refined_patch}
+  \end{subfigure}
+
+  \vspace{1em}
+
+  % data layout for patch
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}[y=-1cm]
+      \begin{scope}[xshift=1.5cm, yshift=0cm]
+        \fill[lightgray] (0,0) rectangle (4,1);
+        \filldraw[draw=black, fill=white] (1.5,0) rectangle ++ (1,1);
+        \node[at={(2,.5)}, ptlabel] {$c_i$};
+        \draw (0,0) -- (4,0);
+        \draw (0,1) -- (4,1);
+      \end{scope}
+
+      \begin{scope}[xshift=.5cm, yshift=-2cm]
+        \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=blue!20] (1,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (3,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (4,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (5,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (6,0) rectangle ++ (1,1);
+        \node[at={(.5,.5)}, ptlabel] {$c_0$};
+        \node[at={(1.5,.5)}, ptlabel] {$c_1$};
+        \node[at={(2.5,.5)}, ptlabel] {$c_2$};
+        \node[at={(3.5,.5)}, ptlabel] {$c_3$};
+        \node[at={(4.5,.5)}, ptlabel] {$e_0$};
+        \node[at={(5.5,.5)}, ptlabel] {$e_1$};
+        \node[at={(6.5,.5)}, ptlabel] {$e_2$};
+
+        % \draw[->] (2.8,-1) .. controls ([yshift=-.4cm] 2.6,-1) and ([yshift=.6cm] 1,0) .. (.8,0);
+        % \draw[->] (3,-1) .. controls ([yshift=-.6cm] 3,-1) and ([yshift=1cm] 3.5,0) .. (3.5,0);
+        % \draw[->] (3.2,-1) .. controls ([yshift=-.4cm] 3,-1) and ([yshift=.6cm] 6,0) .. (6.2,0);
+      \end{scope}
+
+      \begin{scope}[xshift=0cm, yshift=-4cm]
+        % c3
+        \begin{scope}[xshift=0cm]
+          \fill[lightgray] (0,0) rectangle (4,1);
+          \filldraw[draw=black, fill=white] (.5,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=blue!20] (1.5,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=white] (2.5,0) rectangle ++ (1,1);
+          \node[at={(1,.5)}, ptlabel] {$c_1$};
+          \node[at={(2,.5)}, ptlabel] {$c_2$};
+          \node[at={(3,.5)}, ptlabel] {$c_3$};
+          \draw (0,0) -- (4,0);
+          \draw (0,1) -- (4,1);
+          % \draw[->] (4,-1) .. controls ([yshift=-.7cm] 4,-1) and ([yshift=1cm] 2,0) .. (2,0);
+        \end{scope}
+
+        % e2
+        \begin{scope}[xshift=5cm]
+          \filldraw[draw=black, fill=blue!20] (0,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+          \node[at={(.5,.5)}, ptlabel] {$e_0$};
+          \node[at={(1.5,.5)}, ptlabel] {$e_1$};
+          \node[at={(2.5,.5)}, ptlabel] {$v_0$};
+          % \draw[->] (2,-1) .. controls ([yshift=-.7cm] 2,-1) and ([yshift=1cm] .5,0) .. (.5,0);
+        \end{scope}
+      \end{scope}
+
+      \draw ({1.5+1.5},1) -- ({0+.5},2);
+      \draw ({2.5+1.5},1) -- ({7+.5},2);
+
+      \draw ({2+1.5},3) -- ({0+0},4);
+      \draw ({3+1.5},3) -- ({4+0},4);
+
+      \draw ({5+1.5},3) -- ({0+5},4);
+      \draw ({6+1.5},3) -- ({3+5},4);
+    \end{tikzpicture}
+    \caption{}
+    \label{}
+  \end{subfigure}
   \caption{}
   \label{}
 \end{figure}
 
-% one could introduce a proper tensor language to express things (like Simit) - currently only
-% focussed on the packing part
+% ignore below
+% relax constraint that a map cannot have parents
+Under such a prescription, a map is therefore a \textit{function between multi-indexes} of the form
 
-\subsection{Patch preconditioners}
+\begin{equation*}
+  \begin{pmatrix} (t_1, i_1) \\ (t_2, i_2) \\ \dots \\ (t_n, i_n) \end{pmatrix}
+  \to
+  \begin{pmatrix} (u^1_1, j^1_1) \\ (u^1_2, j^1_2) \\ \dots \\ (u^1_{k_1}, j^1_{k_1}) \end{pmatrix}
+  ,
+  \begin{pmatrix} (u^2_1, j^2_1) \\ (u^2_2, j^2_2) \\ \dots \\ (u^2_{k_2}, j^2_{k_2}) \end{pmatrix}
+  , \dots ,
+  \begin{pmatrix} (u^m_1, j^m_1) \\ (u^m_2, j^m_2) \\ \dots \\ (u^m_{k_m}, j^m_{k_m}) \end{pmatrix}.
+\end{equation*}
+
+\subsection{Patch-based multigrid smoothers}
 \label{sec:future_patch}
 
+It has been demonstrated that geometric multigrid with a smoother stage involving the direct solution of a `local' finite element problem is effective for many problem~\cite{vankaBlockimplicitMultigridSolution1986,arnoldPRECONDITIONINGDivAPPLICATIONS,farrellAugmentedLagrangianPreconditioner2019}.
+These `local' problems, called \textit{patches}, are in fact subdomains of the entire mesh taken via some composition of DMPlex restrictions.
+Examples include \textit{vertex-star} patches, the \glspl{dof} defined on a vertex and entities in its $\plexstar$, and \textit{Vanka} patches, the same but taking the $\closure$ of the vertex-star to capture a larger patch.
+The idea behind these patches is that a local finite element problem is solved using them and this contributes an update, via either the additive or multiplicative Schwartz methods, to the current guess.
+
+This abstraction has been implemented via contributions to Firedrake, PETSc and \pyop2 and is called PCPATCH~\cite{farrellPCPATCHSoftwareTopological2021}.
+To run, the `outer loop' over patches and the updates (either additive or multiplicative) are performed by PETSc.
+Callbacks registered in Firedrake are used to construct the local problem.
+Since the problem is defined entirely using PETSc types, one can utilise any of the possible solver strategies provided by it.
+In particular, matrix-free solver implementations are natively supported.
+
+Firedrake also supports an alternative backend for applying patch preconditioners called \textit{TinyASM}~\cite{wechsungTinyASMBlockJacobiImplementation}.
+TinyASM, at setup time, precomputes the matrix inverses for each patch so the local solve can be done very efficiently without needing to use PETSc objects, which are specialised towards much larger linear systems.
+
+Both of these existing approaches have a number of drawbacks.
+As just mentioned, solving linear systems in PETSc can be inefficient for patches as one needs to solve lots of small problems, rather than a single large one.
+This is solved by TinyASM, but their approach is unsuitable for high order methods because it requires computing a large number of dense inverses which can cause a machine to run out of memory.
+Also, both systems require a significant amount of hand-coding for specific patches and reasoning about numberings etc.
+
+% Pablo's stuff
+We also run into problems when dealing with sparsity-preserving discretisations at high-order.
+Matrix-explicit implementations are unsuitable because the per-patch matrices, though sparse, are very large and can fill up a machine's memory.
+Also, matrix-free implementations won't work because each cell returns a dense block and the sparsity is lost.
+To resolve, we would like to be able to construct sparse matrices `on-the-fly' for each patch.
+To make this efficient we would need to memoize the different potential sparsity patterns - you get different patterns depending on the number of incident edges on a vertex for example.
+
+In \pyop3, we would like to simplify these implementation considerations by raising the level of abstraction.
+The \pyop3 interface (Section~\ref{sec:impl}) is already flexible enough to permit the sorts of loops that patch smoothing requires.
+For example, a Vanka patch (closure of a vertex-star) could be expressed as follows:
 
 \begin{minted}{python}
-loop(v := mesh.vertices, [
-  loop(p := star(v), [
-    kernel(dat1[closure(p)], dat2[closure(p)], "mat"),
-    kernel(dat3[closure(p)], "vec"),
+loop(v := mesh.vertices.index, [
+  loop(p := star(v).index, [
+    assemble_jacobian(dat1[closure(p)], dat2[closure(p)], "mat"),
+    assemble_residual(dat3[closure(p)], "vec"),
   ]),
-  solve("mat", "vec", dat4[v]),
+  solve_and_update("mat", "vec", dat4[v]),
 ])
 \end{minted}
 
+Note that here we use the strings \py{"mat"} and \py{"vec"} to identify the loop temporaries.
+This is syntactic sugar and if we were to want to specify non-default behaviour for these objects, for instance memoizing the sparsity patterns or using a pre-computed inverse, then we could instead instantiate specific \py{LoopTemporary} objects.
+
 \subsection{Constraints}
 \label{sec:future_constraints}
+
+% alt refinement 3
+% \begin{tikzpicture}
+%
+%   \tkzDefPoint(0,0){v0}
+%   \tkzDefShiftPoint[v0](60:4){v1}
+%   \tkzDefShiftPoint[v0](0:4){v2}
+%   \tkzDrawPolygon(v0,v1,v2)
+%
+%   \tkzDefMidPoint(v0,v1) \tkzGetPoint{e0v0}
+%   \tkzDefMidPoint(v1,v2) \tkzGetPoint{e1v0}
+%   \tkzDefMidPoint(v2,v0) \tkzGetPoint{e2v0}
+%
+%   \tkzDrawSegment(e0v0,e1v0)
+%   \tkzDrawSegment(e1v0,e2v0)
+%   \tkzDrawSegment(e2v0,e0v0)
+%
+%   \tkzDefMidPoint(e1v0,v2) \tkzGetPoint{e1e1v0}
+%   \tkzDefMidPoint(v2,e2v0) \tkzGetPoint{e2e0v0}
+%   \tkzDefMidPoint(e1v0,e2v0) \tkzGetPoint{c0e2v0}
+%
+%   \tkzDrawSegment(e1e1v0,e2e0v0)
+%   \tkzDrawSegment(e2e0v0,c0e2v0)
+%   \tkzDrawSegment(c0e2v0,e1e1v0)
+%
+%   \tkzDrawSegment(e0v0,c0e2v0)
+% \end{tikzpicture}
+
+% sample cell
+% \begin{tikzpicture}
+%
+%   \tkzDefPoint(0,0){v0}
+%   \tkzDefShiftPoint[v0](60:4){v1}
+%   \tkzDefShiftPoint[v0](0:4){v2}
+%   \tkzDrawPolygon(v0,v1,v2)
+%
+%   \tkzLabelPoint[below left](v0){$v_0$}
+%   \tkzLabelPoint[above](v1){$v_1$}
+%   \tkzLabelPoint[below right](v2){$v_2$}
+%
+%   \tkzLabelSegment(v0,v1){$e_0$}
+%   \tkzLabelSegment(v1,v2){$e_1$}
+%   \tkzLabelSegment(v2,v0){$e_2$}
+%
+%   \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0}
+%   \tkzLabelPoint[centered](c0){$c_0$}
+%
+% \end{tikzpicture}
