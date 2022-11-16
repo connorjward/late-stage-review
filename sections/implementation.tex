@@ -1,66 +1,6 @@
 \section{Implementation}
 \label{sec:impl}
 
-As discussed in Section~\ref{sec:stencillang}, existing stencil languages may be classified according to whether or not they are aware of the mesh topology.
-A library that is not `mesh-aware', for example \pyop2, can be more challenging to program in because responsibility for reasoning about the topology, including orientations, is passed to the user who has to construct the appropriate indirection maps to represent their mesh.
-By contrast, a `mesh-aware' library does not have these problems but it has to use its own custom mesh implementation.
-This increases the burden on the maintainers of the software and the mesh implementations will, without substantial development effort, suffer from both lack of features (e.g. I/O, parallel decomposition, adaptive refinement) and poor interoperability with other packages.
-
-In this work we attempt to bridge this gap by writing a new stencil language, \pyop3, that combines the advantages provided by `mesh-aware' frameworks with a mature, external mesh implementation (DMPlex).
-\pyop3 is, somewhat obviously, heavily inspired by and based upon \pyop2, and hence much of its design represents either an incremental improvement on \pyop2, or is in fact directly lifted from it.
-
-
-In \pyop3, users declare the iterations to be performed, the local operations to apply, and the stencil patterns for each data structure in a manner that is close to the mathematics/pseudocode.
-As an example, the syntax for a typical \gls{fem} residual assembly, where one loops over cells and computes using data in the cell's closure, would look something like:
-
-\begin{minted}[xleftmargin=4em]{python}
-do_loop(
-  c := mesh.cells.index,
-  kernel(dat0[closure(c)], dat1[closure(c)])
-)
-\end{minted}
-
-Unlike \pyop2, \pyop3 permits arbitrary composition of DMPlex restriction operations.
-One can, for example, easily describe stencils over interior facets where the stencil is composed of \textit{the closure of the cells incident on the facet}, or, in DMPlex terminology, $\closure(\support(p))$:
-
-\begin{minted}[xleftmargin=4em]{python}
-do_loop(
-  f := mesh.interior_facets.index,
-  kernel(
-    dat0[closure(support(f))],
-    dat1[closure(support(f))]
-  )
-)
-\end{minted}
-
-\subsection{Data types}
-
-Like \pyop2, \pyop3 has three main data types: \py{Globals}, \py{Dats} and \py{Mats}.
-These may be understand as data types aware of zero, one or two meshes respectively.
-
-A \py{Global} represents some, possibly vector-valued, quantity that is shared across all processes.
-It has no awareness of the mesh whatsoever.
-
-By contrast, a \py{Dat} is a vector associated with a given mesh, storing some set of values at each mesh point.
-It is uniquely associated with a single mesh and, since the mesh is distributed between processes, only a subset of the overall data structure is present on any single process.
-
-Lastly, a \py{Mat} can be thought of as representing the `overlap' between two (possibly the same) meshes.
-Abstractly, they are used to compute quantities that depend on the interaction between different mesh points.
-This can include the test and trial functions from \gls{fem}, or an interpolation matrix to interpolate values between different meshes.
-Since solving \glspl{pde} typically makes use of functions with \textit{local support} (i.e. functions whose value are zero except in some small region of the mesh), these matrices are typically very \textit{sparse} as non-zeros are only present in the regions where these supports overlap.
-
-For the \gls{fem}, where the cell integrals are defined using the closure operation, the overlap between test and trial functions is assumed to be the combination of the closures of each cell.
-
-\subsection{Just-in-time compilation}
-
-The execution pipeline is shown in Figure~\ref{fig:codegenproc}.
-First, and this is the main work done by \pyop3, an input \textit{loop expression} is converted to a loopy intermediate representation.
-Then, this intermediate representation is lowered to a low-level language such as C which is then just-in-time compiled to a shared library that can be executed using data provided by the original loop expression (e.g. here that means \py{mesh}, \py{dat0} and \py{dat1}).
-
-Note that in this example, by using \py{do_loop}, we declare the loop expression and then \textit{immediately} execute it.
-It is frequently desirable, for reasons of efficiency, to have a \textit{persistent} loop expression which one can create by running \py{expr = loop(...)}.
-This is discussed in more detail in Section~\ref{sec:impl_overhead}.
-
 \begin{figure}
   \centering
   \begin{tikzpicture}
@@ -83,12 +23,9 @@ This is discussed in more detail in Section~\ref{sec:impl_overhead}.
     \draw [-{stealth},densely dashed] (loop) to [bend left=35]
       node[midway,above,align=center,font=\footnotesize] {Pass in data from\\loop expression} (do);
   \end{tikzpicture}
-  \caption{}
+  \caption{The code generation and execution pipeline for a \pyop3 loop expression.}
   \label{fig:codegenproc}
 \end{figure}
-
-In the example above, \mintinline{python}{kernel} is an externally provided loopy kernel augmented with \textit{access descriptors} (\py{READ}, \py{WRITE}, \py{RW}, \py{INC}, \py{MIN} or \py{MAX}) that allows \pyop3 to emit the correct packing/unpacking code.
-In this case, if we assume the access descriptors for \py{kernel} are \py{READ} and \py{INC}, then we would generate C code resembling that shown in Listing~\ref{lst:basicloop}.
 
 \begin{listing}
   \begin{minted}{c}
@@ -117,7 +54,41 @@ void do_loop(int ncells, double *dat0, double *dat1, int *map0) {
   \label{lst:basicloop}
 \end{listing}
 
+As discussed in Section~\ref{sec:stencillang}, existing stencil languages may be classified according to whether or not they are aware of the mesh topology.
+A library that is not `mesh-aware', for example \pyop2, can be more challenging to program in because responsibility for reasoning about the topology, including orientations, is passed to the user who has to construct the appropriate indirection maps to represent their mesh.
+By contrast, a `mesh-aware' library does not have these problems but it has to use its own custom mesh implementation.
+This increases the burden on the maintainers of the software and the mesh implementations will, without substantial development effort, suffer from both lack of features (e.g. I/O, parallel decomposition, adaptive refinement) and poor interoperability with other packages.
+
+In this work we attempt to bridge this gap by writing a new stencil language, \pyop3, that combines the advantages provided by `mesh-aware' frameworks with a mature, external mesh implementation (DMPlex).
+\pyop3 is, somewhat obviously, heavily inspired by and based upon \pyop2, and hence much of its design represents either an incremental improvement on \pyop2, or is in fact directly lifted from it.
+
+In \pyop3, users declare the iterations to be performed, the local operations to apply, and the stencil patterns for each data structure in a manner that is close to the mathematics/pseudocode.
+As an example, the syntax for a typical \gls{fem} residual assembly, where one loops over cells and computes using data in the cell's closure, would look something like:
+
+\begin{minted}[xleftmargin=4em]{python}
+do_loop(
+  c := mesh.cells.index,
+  kernel(dat0[closure(c)], dat1[closure(c)])
+)
+\end{minted}
+
+The function \py{do_loop} declares and then executes a \textit{loop expression}.
+A loop expression consists of an iteration set, here \py{mesh.cells}, and a sequence of instructions to execute, here simply the single function call to \py{kernel}.
+\py{kernel} is an externally provided loopy kernel augmented with \textit{access descriptors} (\py{READ}, \py{WRITE}, \py{RW}, \py{INC}, \py{MIN} or \py{MAX}) that allows \pyop3 to emit the correct packing/unpacking code.
+The \py{datN} objects are \pyop3 \py{Dats}, vectors storing \glspl{dof} across mesh points.
+\pyop3 shares the same fundamental data structures as \pyop2: \py{Globals}, values shared across all processors; \py{Dats}, vectors storing data associated with mesh points; and \py{Mats}, (sparse) matrices representing interactions between mesh points.
+Lastly, the \py{datN[closure(c)]} instructions indicate that \py{kernel} expects two arguments, each a contiguous array representing the \glspl{dof} associated with the closure of the given cell.
+
+Note that in this example, by using \py{do_loop}, we declare the loop expression and then \textit{immediately} execute it.
+It is frequently desirable, for reasons of efficiency, to have a \textit{persistent} loop expression which one can create by running \py{expr = loop(...)}.
+This is discussed in more detail in Section~\ref{sec:impl_overhead}.
+
+To execute such an expression, it is lowered through a sequence of intermediate representations before being finally compiled to a binary and run (Figure~\ref{fig:codegenproc}).
+In particular, the main role of \pyop3 is the lowering of the input loop expression to a loopy kernel which is then lowered to C.
+To illustrate this using the example above, if we assume the access descriptors for \py{kernel} are \py{READ} and \py{INC}, then we would generate C code resembling that shown in Listing~\ref{lst:basicloop}.
+
 \subsection{A new abstraction for mesh data layouts}
+\label{sec:impl_datalayout}
 
 The additional flexibility \pyop3 has over its precursor \pyop2 is thanks to its novel abstraction for describing data layouts.
 In \pyop2, data layouts are prescribed by associating data (i.e. \glspl{dof}) with \textit{sets}.
@@ -277,7 +248,7 @@ The tree itself is shown in Figure~\ref{fig:vdat_tree}.
       \draw [-{stealth}] (enodes) -- (edofs);
       \draw [-{stealth}] (vnodes) -- (vdofs);
     \end{tikzpicture}
-    \caption{}
+    \caption{Example data layout tree for a 2D \py{Dat}.}
     \label{fig:vdat_tree}
   \end{subfigure}
 
@@ -296,15 +267,17 @@ root = (
   .add_subaxis("vnodes", AxisPart(nvdofs))
 )
     \end{minted}
-    \caption{}
+    \caption{\pyop3 code for constructing the tree structure shown above.}
     \label{lis:demotreecode}
   \end{subfigure}
-  \caption{}
+  \caption{Example data layout.}
   \label{fig:demotree}
 \end{figure}
 
 Having constructed such a data layout, we address it via the use of a \textit{typed multi-index}.
-This is an object of the form $((t_1, i_1), (t_2, i_2), \dots, (t_n, i_n))$ where $t_x$ (the `type') indicates the correct \py{AxisPart} to in the hierarchy.
+This is an object of the form $\big[(t_1, i_1), (t_2, i_2), \dots, (t_n, i_n)\big]$ where $t_x$ (the `type') indicates the correct \py{AxisPart} to use in the hierarchy.
+To streamline the notation, each multi-index entry in the remainder of the report will be written in the form $\mathit{type}_{\mathit{index}}$ (e.g. $c_0$ might indicate the type as `cells' with index 0).
+
 For each \py{AxisPart}, and given an index into it ($i_x$), we use \textit{layout functions} to determine its location in memory and these offsets are added together to get the final address.
 A layout function is a function that takes in an index and returns an offset.
 In the case of axes with constant stride this simply takes the form \py{off = iX * stride}, but for non-constant strides it would resemble \py{off = offsets[iX]}.
@@ -318,11 +291,10 @@ This means that one can no longer stride over the axis by a constant value, and 
 % TODO: This bit should probably be moved/broken up
 This approach is advantageous because it is much more natural to reason about mesh operations at the level of mesh points.
 DMPlex restrictions naturally map points to points instead of points to nodes, making map composition tractable.
-The approach also facilitates: orienting \glspl{dof} (Section~\ref{sec:impl_orientation}), data layout optimisations (Section~\ref{sec:impl_datalayoutopt}), and extruded and other partially-structured meshes (Section~\ref{sec:future_partialstructure}).
-
-% TODO: Mention that this lets us do mixed
+The approach also facilitates: `mixed' data structures, orienting \glspl{dof} (Section~\ref{sec:impl_orientation}), data layout optimisations (Section~\ref{sec:impl_datalayoutopt}), and extruded and other partially-structured meshes (Section~\ref{sec:future_partialstructure}).
 
 \subsubsection{Maps}
+\label{sec:impl_datalayout_maps}
 
 When we address some data, the provided data structure is associated with a particular multi-index.
 When we directly address data structures, for example by doing the following:
@@ -365,10 +337,21 @@ In an analogous way to layout functions, maps can be implemented either using in
 This enables, for example, the use of structured meshes without needing to incur the memory bandwidth cost of tabulating a lookup table.
 
 The approach just described enables arbitrary map composition because maps now work in line with how DMPlex handles restrictions, namely functions between mesh points, rather than between points and nodes.
+One can, for example, easily describe stencils over interior facets where the stencil is composed of \textit{the closure of the cells incident on a facet}, or, in DMPlex terminology, $\closure(\support(p))$:
 
-Note that at present we restrict maps to only apply to multi-indexes of length 1.
-This is sufficient for unstructured meshes but a necessity for partially-structured meshes.
-This is discussed in detail in Section~\ref{sec:future_partialstructure}.
+\begin{minted}[xleftmargin=4em]{python}
+do_loop(
+  f := mesh.interior_facets.index,
+  kernel(
+    dat0[closure(support(f))],
+    dat1[closure(support(f))]
+  )
+)
+\end{minted}
+
+Note that at present we restrict maps to only work for multi-indices where the `parent' indices are the same for the input and output indices.
+This is sufficient for unstructured meshes but not for partially-structured meshes.
+This is discussed in detail in Section~\ref{sec:future_partialstructure_maps}.
 
 \subsubsection{Raggedness and sparsity}
 \label{sec:impl_datalayout_ragged}
@@ -836,14 +819,38 @@ In addition to the performance benefits espoused above, this new data layout abs
 \subsection{Avoiding Python overhead}
 \label{sec:impl_overhead}
 
-We have chosen to write \pyop3 in Python... %why?
+Python is the language of choice for \pyop3 for a number of compelling reasons.
+Dynamic typing and being interpreted instead of compiled makes it very fast for users to prototype code.
+It also has great syntax, especially for domain-specific languages.
+User scripts are frequently shorter than 100 lines of code.
 
-% halo exchanges in C
-% do_loop(...) vs expr = loop(...) - easy to swap out data structures via **kwargs, weakref
+The primary complaint levelled at Python is that it is much slower, often by a factor of 100, than a compiled language like C or Fortran.
+In general this issue is not important in code generation frameworks like \pyop3 and Firedrake since the performance critical parts of the code - the `hot loops' - are actually compiled C code and just as fast as code that is written by hand.
+The fact that the rest of the library is written in Python does not matter as only a tiny fraction of the programs runtime is spent there.
 
-% also strong-scaling (but shown otherwise)
-% key is to minimise amount of Python in the hot loops via judicious caching, persistent objects and expanded codegen
+However, there is one significant occasion where this claim falls down, and our choice of Python as language causes trouble: in the strong-scaling limit (Section~\ref{sec:background_perf_efficiency}).
+In this limit the problem occupying the `hot loops' is `small' and hence completes very quickly.
+This means that more time is spent in the Python interpreter which is slow.
+Firedrake has been observed to have poor strong-scaling behaviour~\cite{changComparativeStudyFinite2018}\footnote{The results shown in this paper are exaggerated. We found that it was possible to substantially improve scaling performance with a few minor code modifications.}.
 
-% use DG advection as an example - caching and persistent objects can be shown to be key
-% but now things like halo exchanges for valid halos (i.e. noops) have non-trivial cost -> move out of Python to the generated code.
+The solution to this issue is simple: spend less time in the Python layer.
+This can be accomplished in two ways: write the new hot loops in a compiled language, possibly via code generation, or avoid doing extra work in Python by applying judicious caching.
+Doing the former is somewhat trivial and will not be discussed here.
+We will instead focus on achieving performant caching solutions in \pyop3.
 
+Since the principle object in \pyop3 is the loop expression, we will only discuss this.
+As mentioned in Section~\ref{sec:impl_jit}, one way to execute a loop expression is to use the function \py{do_loop(...)}.
+This instantiates a new loop expression and then executes it.
+While concise, this function is not suitable if one wants to execute an identical loop expression repeatedly because, at each iteration, the expression needs to be hashed prior to being able to use any internal caching (e.g. for the generated code).
+
+To resolve this particular issue one can create a persistent loop expression via the command \py{expr = loop(...)} (taking the same arguments as \py{do_loop(...)}), which can then be executed with \py{expr.apply()}.
+Having a persistent expression means that it can be hashed once and any cached objects may be directly accessed.
+
+At this point, however, care needs to be taken with the data structures involved.
+The loop expression is created using `heavy' data-carrying objects like \py{Dats} and \py{Mats} and so indiscriminate caching of the expression would result in a memory leak.
+Along similar lines, it is also difficult to `swap out' data structures in the loop expression without requiring the instantiation of a brand new expression.
+In other words, if one wanted to, say, execute the same loop expression but write the output to a different data structure, then this would require the creation of a new loop expression and reincur the, totally unnecessary, cost of hashing the expression.
+
+To resolve this, \pyop3 loop expressions will store \textit{weak references} to the data structures in the loop expression and \py{expr.apply} will take optional keyword arguments to swap out the data structures as appropriate (e.g. \py{expr.apply(out=mynewdat)}).
+In Python, weak references are references to objects that do not increase their \textit{reference count}.
+This prevents memory leaks because the lifetime of a data structure will only be tied to its own scope, they will still be cleaned up even if they are referenced in a cached loop expression.

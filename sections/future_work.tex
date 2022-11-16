@@ -1,6 +1,8 @@
 \section{Future work}
 \label{sec:future}
 
+In this section we present a number of possible extensions to \pyop3.
+
 \subsection{Direct addressing for partially-structured meshes}
 \label{sec:future_partialstructure}
 
@@ -23,6 +25,8 @@ The benefit to using partially structured meshes is that the memory volume of th
 This is discussed in detail in Section~\ref{sec:background_structure} where we observed that the savings in memory volume are actually not that great, with a best case of 25\%.
 Since the potential benefits are limited, we have not implemented meshes with partial structure in \pyop3 yet.
 This section exists to demonstrate that our implementation does not prohibit making such optimisations in the future, and that in fact they would be relatively simple to implement as a consequence of our mesh-aware data layout.
+
+As an aside, it is important to note that, in order to be able to extract any memory savings from this approach, both the stencils (a.k.a. maps) \textit{and} the layout functions must be expressible without the need for lookup tables.
 
 \subsubsection{A unifying abstraction: mesh transformations}
 
@@ -179,7 +183,7 @@ Likewise we could consider refining an edge, say, into 3 or more segments rather
       \end{scope}
     \end{tikzpicture}
     \caption{Vertex extrusion.}
-    \label{}
+    \label{fig:transform_extrusion_vertex}
   \end{subfigure}
 
   \vspace{1em}
@@ -219,7 +223,7 @@ Likewise we could consider refining an edge, say, into 3 or more segments rather
       Edge extrusion.
       Note that no vertices are produced in the transformation as they would be produced by the vertices incident on the initial edge.
     }
-    \label{}
+    \label{fig:transform_extrusion_edge}
   \end{subfigure}
   \caption{
     Example extrusion transformations.
@@ -228,11 +232,7 @@ Likewise we could consider refining an edge, say, into 3 or more segments rather
   \label{fig:transform_extrusion}
 \end{figure}
 
-\subsubsection{Implementation}
-
-% here!
-% 2. implement using multiaxes (show two figures: refined (done), extruded)
-% reconstruct hierarchy using labels
+\subsubsection{Implementation: Overview}
 
 % refined patch example
 \begin{figure}
@@ -366,30 +366,219 @@ Likewise we could consider refining an edge, say, into 3 or more segments rather
       \draw ({6+1.5},3) -- ({3+5},4);
     \end{tikzpicture}
     \caption{}
-    \label{}
+    \label{fig:refined_data}
   \end{subfigure}
   \caption{}
-  \label{}
+  \label{fig:refined_patch_and_data}
 \end{figure}
 
-% ignore below
-% relax constraint that a map cannot have parents
-Under such a prescription, a map is therefore a \textit{function between multi-indexes} of the form
+% extruded patch example
+\begin{figure}
+  \centering
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \tkzDefPoint(0,0){v0v0}
+      \tkzDefShiftPoint[v0v0](2,0){v1v0}
+      \tkzDefShiftPoint[v1v0](2,0){v2v0}
+      \tkzDefShiftPoint[v0v0](0,2){v0v1}
+      \tkzDefShiftPoint[v1v0](0,2){v1v1}
+      \tkzDefShiftPoint[v2v0](0,2){v2v1}
+      \tkzDefShiftPoint[v0v1](0,2){v0v2}
+      \tkzDefShiftPoint[v1v1](0,2){v1v2}
+      \tkzDefShiftPoint[v2v1](0,2){v2v2}
+      \tkzDefShiftPoint[v0v2](0,2){v0v3}
+      \tkzDefShiftPoint[v1v2](0,2){v1v3}
 
-\begin{equation*}
-  \begin{pmatrix} (t_1, i_1) \\ (t_2, i_2) \\ \dots \\ (t_n, i_n) \end{pmatrix}
-  \to
-  \begin{pmatrix} (u^1_1, j^1_1) \\ (u^1_2, j^1_2) \\ \dots \\ (u^1_{k_1}, j^1_{k_1}) \end{pmatrix}
-  ,
-  \begin{pmatrix} (u^2_1, j^2_1) \\ (u^2_2, j^2_2) \\ \dots \\ (u^2_{k_2}, j^2_{k_2}) \end{pmatrix}
-  , \dots ,
-  \begin{pmatrix} (u^m_1, j^m_1) \\ (u^m_2, j^m_2) \\ \dots \\ (u^m_{k_m}, j^m_{k_m}) \end{pmatrix}.
-\end{equation*}
+      % horiz edges
+      \tkzDrawSegments(v0v0,v1v0 v1v0,v2v0)
+      \tkzDrawSegments(v0v1,v1v1 v1v1,v2v1)
+      \tkzDrawSegments(v0v2,v1v2 v1v2,v2v2)
+      \tkzDrawSegments(v0v3,v1v3)
+
+      % vert edges
+      \tkzDrawSegments(v0v0,v0v1 v0v1,v0v2 v0v2,v0v3)
+      \tkzDrawSegments(v1v0,v1v1 v1v1,v1v2 v1v2,v1v3)
+      \tkzDrawSegments(v2v0,v2v1 v2v1,v2v2)
+
+      % verts
+      \tkzDrawPoints(v0v0,v0v1,v0v2,v0v3)
+      \tkzDrawPoints(v1v0,v1v1,v1v2,v1v3)
+      \tkzDrawPoints(v2v0,v2v1,v2v2)
+
+      % patch
+      \begin{pgfonlayer}{background}
+        % find points by bisecting the angles
+        \tkzDefShiftPoint[v0v0](45:0.15){v0v0inner}
+        \tkzDefShiftPoint[v0v1](-45:0.15){v0v1inner}
+        \tkzDefShiftPoint[v2v1](-135:0.15){v2v1inner}
+        \tkzDefShiftPoint[v2v0](135:0.15){v2v0inner}
+
+        % source: https://tikz.dev/base-paths#sec-102.12
+        \pgfsetcornersarced{\pgfpoint{1mm}{1mm}}
+        \filldraw[color=blue!20] (v0v0inner) -- (v0v1inner) -- (v2v1inner) -- (v2v0inner) -- cycle;
+        \pgfsetcornersarced{\pgfpointorigin}
+      \end{pgfonlayer}
+
+      % add labels
+      \begin{scope}[overlay]
+        \tkzDefBarycentricPoint(v0v0=1,v0v1=1,v1v0=1,v1v1=1) \tkzGetPoint{c0c0}
+        \node [xshift=-2cm,yshift=.8cm] (c0c0label) at (c0c0) {$(e_0,c_0)$};
+        \draw (c0c0label) -- (c0c0);
+
+        \tkzDefBarycentricPoint(v1v0=1,v1v1=1,v2v0=1,v2v1=1) \tkzGetPoint{c1c0}
+        \node [xshift=2cm,yshift=.4cm] (c1c0label) at (c1c0) {$(e_1,c_0)$};
+        \draw (c1c0label) -- (c1c0);
+
+        \tkzDefBarycentricPoint(v1v0=1,v1v1=1) \tkzGetPoint{v1e0}
+        \node [xshift=-.9cm,yshift=1.7cm] (v1e0label) at (v1e0) {$(v_1,e_0)$};
+        \draw (v1e0label) -- (v1e0);
+      \end{scope}
+
+      % bottom labels need to be included in bounding box
+      \tkzDefBarycentricPoint(v0v0=1,v1v0=1) \tkzGetPoint{e0}
+      \tkzLabelPoint[below](e0){$e_0$}
+      \tkzDefBarycentricPoint(v1v0=1,v2v0=1) \tkzGetPoint{e1}
+      \tkzLabelPoint[below](e1){$e_1$}
+
+      \tkzLabelPoint[below](v0v0){$v_0$}
+      \tkzLabelPoint[below](v1v0){$v_1$}
+      \tkzLabelPoint[below](v2v0){$v_2$}
+    \end{tikzpicture}
+    \caption{
+      An example of a stencil - $\plexstar((v_1, e_0))$ - applied to an extruded mesh formed by extruding a `base' mesh consisting of 2 edges ($e_0$ and $e_1$) and 3 vertices ($v_0$, $v_1$ and $v_2$).
+      Note that the mesh shown here has `variable layers' to emphasise that such a mesh would be supported by our abstraction.
+    }
+    \label{fig:extruded_patch}
+  \end{subfigure}
+
+  \vspace{1em}
+
+  % data layout for patch
+  \begin{subfigure}{\textwidth}
+    \centering
+    \begin{tikzpicture}[y=-1cm]
+      \begin{scope}[xshift=3.25cm, yshift=0cm]
+        \filldraw[draw=black, fill=blue!20] (0,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (1,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=blue!20] (2,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=white] (3,0) rectangle ++ (1,1);
+        \filldraw[draw=black, fill=blue!20] (4,0) rectangle ++ (1,1);
+
+        \node[at={(.5,.5)}, ptlabel] {$v_1$};
+        \node[at={(1.5,.5)}, ptlabel] {$v_0$};
+        \node[at={(2.5,.5)}, ptlabel] {$e_0$};
+        \node[at={(3.5,.5)}, ptlabel] {$v_2$};
+        \node[at={(4.5,.5)}, ptlabel] {$e_1$};
+      \end{scope}
+
+      \begin{scope}[yshift=-2cm]
+        \begin{scope}[xshift=0cm]
+          \fill[lightgray] (0,0) rectangle (3.5,1);
+          \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=blue!20] (1,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+          \node[at={(.5,.5)}, ptlabel] {$v_0$};
+          \node[at={(1.5,.5)}, ptlabel] {$e_0$};
+          \node[at={(2.5,.5)}, ptlabel] {$v_1$};
+          \draw (0,0) -- (3.5,0);
+          \draw (0,1) -- (3.5,1);
+        \end{scope}
+
+        \begin{scope}[xshift=4cm]
+          \fill[lightgray] (0,0) rectangle (3.5,1);
+          \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=blue!20] (1,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+          \node[at={(.5,.5)}, ptlabel] {$e_0$};
+          \node[at={(1.5,.5)}, ptlabel] {$c_0$};
+          \node[at={(2.5,.5)}, ptlabel] {$e_1$};
+          \draw (0,0) -- (3.5,0);
+          \draw (0,1) -- (3.5,1);
+        \end{scope}
+
+        \begin{scope}[xshift=8cm]
+          \fill[lightgray] (0,0) rectangle (3.5,1);
+          \filldraw[draw=black, fill=white] (0,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=blue!20] (1,0) rectangle ++ (1,1);
+          \filldraw[draw=black, fill=white] (2,0) rectangle ++ (1,1);
+          \node[at={(.5,.5)}, ptlabel] {$e_0$};
+          \node[at={(1.5,.5)}, ptlabel] {$c_0$};
+          \node[at={(2.5,.5)}, ptlabel] {$e_1$};
+          \draw (0,0) -- (3.5,0);
+          \draw (0,1) -- (3.5,1);
+        \end{scope}
+      \end{scope}
+
+      \draw ({3.25+0},1) -- ({0+0},2);
+      \draw [densely dashed] ({3.25+1},1) -- ({0+3.5},2);
+      \draw ({3.25+2},1) -- ({4+0},2);
+      \draw [densely dashed] ({3.25+3},1) -- ({4+3.5},2);
+      \draw ({3.25+4},1) -- ({8+0},2);
+      \draw [densely dashed] ({3.25+5},1) -- ({8+3.5},2);
+    \end{tikzpicture}
+    \caption{
+      Example data layout for the extruded mesh shown above.
+      Points in the stencil are highlighted in blue.
+      Note that the points in the `base' mesh are not ordered since it represents an unstructured mesh.
+    }
+    \label{fig:extruded_data}
+  \end{subfigure}
+  \caption{}
+  \label{fig:extruded_patch_and_data}
+\end{figure}
+
+To implement mesh transformations in a structure preserving way, we simply require that the mesh points produced from the transformation produce a new subaxis in the data layout.
+This is most simply demonstrated for extruded meshes.
+If we consider the extruded mesh and data layout shown in Figure~\ref{fig:extruded_patch_and_data}, the `base' mesh is formed of 2 edges ($e_0$ and $e_1$) and 3 vertices ($v_0$, $v_1$ and $v_2$).
+From Figure~\ref{fig:transform_extrusion} we see that, under extrusion, vertices produce points like $(v_0, e_0, v_1, \dots)$ and that edges produce points like $(e_0, c_0, e_1, \dots)$.
+These production rules exactly match the subaxes shown in Figure~\ref{fig:extruded_data}.
+
+The principle benefit of codifying the distinction between the base points and those up each of the columns in separate axes is that we can now use separate layout functions (see Section~\ref{sec:impl_datalayout}) to handle the addressing for each.
+The base mesh is unstructured - and so an indirection map is required to address its axis - but the points up each of the columns are structured and can be addressed using some affine indexing function (i.e. \clang{offset = start + i*step}).
+
+\subsubsection{Implementation: Rethinking maps}
+\label{sec:future_partialstructure_maps}
+
+As described in Section~\ref{sec:impl_datalayout_maps}, a map is a function that accepts a multi-index and returns a collection of multi-indices.
+For meshes without partial structure it is sufficient to limit the length of these multi-indices to 1 - any `parent' point, often non-existing, will always be the same for both the input point and all of the outputs.
+Inconveniently, for partially structured meshes, this assumption no longer holds and parent points may differ.
+This is illustrated in Figure~\ref{fig:extruded_patch_and_data}: $\plexstar((v_1,e_0))$ is $\big[ (v_1,e_0), (e_0,c_0), (e_1,c_0) \big]$ - the parent points, here corresponding to the `base' mesh points, are different.
+
+As discussed above, in order to achieve any performance gains via memory volume reduction both the maps and the layout functions must be expressible without resorting to a global tabulation.
+In the extruded case just described, this really means that one cannot store the full multi-indices in a lookup table.
+Instead, the information available to \pyop3 is as follows:
+1) the $\plexstar$ of a vertical edge contains cells `belonging' to adjacent base edges, and
+2) the adjacency relationships between base entities (i.e. we know that $v_1$ is incident on $e_0$ and $e_1$).
+Using these pieces of information it is possible to reconstruct the full set of complete multi-indices required to address the data correctly.
+
+\subsubsection{Implementation: Interfacing with DMPlex}
+
+One major shortcoming of the existing extruded mesh implementation in \pyop2 is that an extruded mesh is not in fact a DMPlex instance.
+Instead it uses a DMPlex to represent the unstructured base mesh and then uses custom code to handle the extrusion up the columns.
+With such an implementation, as far as DMPlex is concerned, an extruded mesh is merely a mesh with `very big' cells (i.e. storing all the \glspl{dof} for each column).
+
+This approach means that extruded meshes are special-cased throughout \pyop2 and Firedrake, requiring specialised implementations for all manner of operations including: preconditioner application, multigrid and I/O.
+Indeed there are places in Firedrake where, due to the extra burden of developing a custom implementation, there is no support for extruded meshes at all.
+One example of such a case is the fact that one cannot have an extruded \py{VertexOnlyMesh}.
+
+\pyop3 takes a different approach to describing partial structure in meshes that we believe should avoid the need for a proliferation of custom implementations.
+Our approach revolves around the idea that a mesh should always be represented by a single DMPlex instance, from which any structure can be inferred.
+By choosing to sit directly on top of DMPlex, all code for unstructured meshes should now work for both cases.
+
+To obtain a hierarchical data layout similar to that shown in Figure~\ref{fig:extruded_data}, \pyop3 would inspect the \textit{labels} of the DMPlex.
+These labels are integers associated with each mesh point.
+
+The critical point here is that the \textit{labels of the input mesh points are automatically passed to the transformed points}.
+This means that one can, for example, uniquely label each point in the input mesh and then extrude it and this will result in a mesh where all of the transformed points up the column `know' the base point to which it belongs.
+The same approach naturally works for refined meshes, uniquely labelling the coarse points prior to refinement allows \pyop3 to reconstruct the right data layout by inspecting the labels.
+
+Since labels persist when writing to disk, we believe that, with minimal code, the hierarchical data structures could be reconstructed via analysis of these labels.
 
 \subsection{Patch-based multigrid smoothers}
 \label{sec:future_patch}
 
-It has been demonstrated that geometric multigrid with a smoother stage involving the direct solution of a `local' finite element problem is effective for many problem~\cite{vankaBlockimplicitMultigridSolution1986,arnoldPRECONDITIONINGDivAPPLICATIONS,farrellAugmentedLagrangianPreconditioner2019}.
+It has been demonstrated that geometric multigrid with a smoother stage involving the direct solution of a `local' finite element problem is effective for many problem~\cite{vankaBlockimplicitMultigridSolution1986,arnoldPRECONDITIONINGDivAPPLICATIONS1997,farrellAugmentedLagrangianPreconditioner2019}.
 These `local' problems, called \textit{patches}, are in fact subdomains of the entire mesh taken via some composition of DMPlex restrictions.
 Examples include \textit{vertex-star} patches, the \glspl{dof} defined on a vertex and entities in its $\plexstar$, and \textit{Vanka} patches, the same but taking the $\closure$ of the vertex-star to capture a larger patch.
 The idea behind these patches is that a local finite element problem is solved using them and this contributes an update, via either the additive or multiplicative Schwartz methods, to the current guess.
