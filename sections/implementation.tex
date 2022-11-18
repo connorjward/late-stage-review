@@ -308,15 +308,9 @@ This is a multi-index with only a single entry which targets all entries in the 
 We remark that only the outermost axes need be indexed - the inner axes (here nodes-per-cell and \glspl{dof}-per-node) are automatically included as full slices.
 
 Since computing stencils requires the addressing of adjacent mesh points, we use \textit{maps} to describe which multi-indexes are required.
-To make things clear, a map is defined as a \textit{function that accepts a multi-index and returns multiple multi-indexes}:
+A map is defined as a \textit{function that accepts a multi-index and returns multiple multi-indices}:
 
-\vspace{1em}
-\begin{equation*}
-  ((t_1, i_1),) \to ((u^1_1, j^1_1),) ,\ ((u^2_1, j^2_1),) ,\ \dots ,\ ((u^m_1, j^m_1),).
-\end{equation*}
-\vspace{1em}
-
-As an example, assuming a triangular mesh, the code
+As an example, for a mesh composed of triangles, the code
 
 \begin{minted}[xleftmargin=4em]{python}
 loop(c := mesh.cells.index, kernel(dat[closure(c)]))
@@ -324,16 +318,17 @@ loop(c := mesh.cells.index, kernel(dat[closure(c)]))
 
 uses the $\closure$ DMPlex restriction operation to yield a map of the form
 
-\vspace{1em}
 \begin{equation*}
-  ((C, c_0),)
-  \to ((C, c_0),)
-  ,\ ((E, e_0),) ,\ ((E, e_1),) ,\ ((E, e_2),)
-  ,\ ((V, v_0),) ,\ ((V, v_1),) ,\ ((V, v_2),).
+  (c_i,)
+  \to \big[
+  (c_i,)
+  ,\ (e_{j_0},) ,\ (e_{j_1},) ,\ (e_{j_2},)
+  ,\ (v_{j_3},) ,\ (v_{j_4},) ,\ (v_{j_5},) \big] .
 \end{equation*}
-\vspace{1em}
 
-In an analogous way to layout functions, maps can be implemented either using index functions (i.e. $e_0 = f(c_0)$), or lookup tables (\py{e0 = map[c0]}) depending on whether or not there is structure to exploit in the data layout.
+In other words, \py{closure(c)} yields, for every cell, 7 multi-indices pointing to the cell and the 6 incident edges and vertices.
+
+In an analogous way to layout functions, maps can be implemented either using index functions (i.e. $e_0 = f(c_0)$), or lookup tables (\clang{e0 = map[c0]}) depending on whether or not there is structure to exploit in the data layout.
 This enables, for example, the use of structured meshes without needing to incur the memory bandwidth cost of tabulating a lookup table.
 
 The approach just described enables arbitrary map composition because maps now work in line with how DMPlex handles restrictions, namely functions between mesh points, rather than between points and nodes.
@@ -391,7 +386,7 @@ If we consider a sparse matrix compressed with compressed-sparse-row (CSR) forma
 This is very similar to our existing solution for ragged arrays except that we assume that the internal dimension is logically dense, and hence do not need to specify column indices.
 
 It should be noted however that we are assuming that the matrix is local to a single processor.
-Parallel sparse matrices are considerably more challenging to implement and so we defer the work to PETSc (see Section~\ref{sec:impl_parallel}).
+Parallel sparse matrices are considerably more challenging to implement and so we defer the work to PETSc (see Section~\ref{sec:impl_parallel_matrices}).
 
 \subsubsection{Orienting degrees-of-freedom}
 \label{sec:impl_orientation}
@@ -583,7 +578,7 @@ In addition to the performance benefits espoused above, this new data layout abs
     a) multiple local kernels are needed, one for each degree, and b) there are `hanging' \glspl{dof} at the boundaries between cells of differing degrees.
     Problem (a) is trivial to resolve in \pyop3.
     Rather than having a \py{MultiAxis} that is composed only of cells, edges and vertices (each a distinct \py{AxisPart}), additional \py{AxisParts} can be added such that mesh points of different degree are associated with a unique \py{AxisPart}.
-    Problem (b) is more challenging to solve and requires the addition of \textit{constraints} to the abstraction (Section~\ref{sec:future_constraints}).
+    Problem (b) is more challenging to solve and requires the addition of \textit{constraints} to the abstraction.
 
   \item
     \textbf{Mixed meshes}
@@ -798,23 +793,47 @@ In addition to the performance benefits espoused above, this new data layout abs
   \label{fig:halos}
 \end{figure}
 
-% same fundamental data types
+At present, \pyop3 implements an identical approach to distributed computing as \pyop2: \py{Globals}, \py{Dats} and \py{Mats} are distributed between processes using MPI parallelism; a hybrid model including shared memory (e.g. OpenMP) is not used.
 
-% how to do insertion into off-diagonal parts in PETSc? how would that work with my stuff?
+To begin with, distribution of \py{Globals} is trivial.
+They represent globally consistent values and so consensus between processes is reached via global reductions.
 
-%\pyop3 has the same parallel design as \pyop2.
-% ghost/halo values for overlaps
-% globals with reductions
-% can do variable halo size to replace exchanges with redundant communication - used in sparse tiling
-% clever layout means we can exchange core, then owned, interleaving communication
-% PETSc Mat for parallel matrices
+\subsubsection{Dats}
 
-% we assume ragged only works in serial
+In stark contrast, \py{Dats} are distributed in a much more interesting manner.
+Each process has a set of \glspl{dof} that it `owns' plus a `halo' region containing adjacent \glspl{dof} required for computations over the owned points.
+Also, the points \textit{in the iteration set} belonging to the process are classified into \textit{core} and \textit{owned} sets.
+Core points are those where a computation can be executed without requiring an up-to-date set of halo entries and owned points are those where it is required.
+Classifying the points into these two categories allows \pyop3 to interleave computation and communication: \textit{core} points can be computed over while the halo exchanges required for \textit{owned} points are in-flight.
 
-% PETSc is scalable (cite?)
-% PyOP2 (via Firedrake assembly) has good weak scalability
+This situation is illustrated in Figure~\ref{fig:halos}.
+It shows a mesh distributed across two processes.
+Points `belonging' to a process are shown in red and blue respectively and the halo values are shown in the appropriate colour for each.
 
-% mention strong scaling
+In this example, the stencil getting used in the iteration is the closure of the patch of cells around a vertex (i.e. $\closure(\plexstar(v))$).
+Since this constitutes a fairly large stencil, the halos have to be correspondingly larger to contain all of the values required by the vertices belonging to the process.
+
+In the figure, \textit{core} vertices are shown as circles and \textit{owned} as diamonds.
+One can see that stencils involving the \textit{core} vertices can be executed without the need for a halo exchange (all points in the stencil are the same colour/on the same process as the vertex itself).
+Similarly, the patches around \textit{owned} vertices contain at least one mesh point belonging to another process and hence a halo exchange is required.
+
+In this example we have chosen to demonstrate mesh partioning using halos of the smallest possible size.
+This is frequently desirable, smaller halos mean less data is transferred, but not in every case.
+If the cost of computing the stencils is smaller than the cost of data movement one may want a larger halo.
+This gains in terms of reduced data movement, but leads to each process performing some extra computations inside the wider halo region.
+Such a strategy is not currently implemented in \pyop2 or \pyop3, but it has been pursued in the past~\cite{luporiniAutomatedTilingUnstructured2019}.
+
+\subsubsection{Mats}
+\label{sec:impl_parallel_matrices}
+
+\pyop3 currently\footnotemark relies on PETSc to provide routines for matrix insertion.
+In parallel, PETSc distributes the data by partitioning the rows between processes.
+\footnotetext{We would like to have a more unified abstraction for \py{Globals}, \py{Dats} and \py{Mats} but this is very preliminary work and not discussed in this report.}
+
+\subsubsection{Scaling}
+
+Weak-scaling is an appropriate metric to evaluate the parallel communication design patterns described above, and in fact both PyOP2 and PETSc have been demonstrated to have good weak-scaling performance~\cite{rathgeberFiredrakeAutomatingFinite2016}. % FIXME include PETSc citation
+Strong-scaling is a different story and is addressed in Section~\ref{sec:impl_overhead}.
 
 \subsection{Avoiding Python overhead}
 \label{sec:impl_overhead}

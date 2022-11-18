@@ -336,37 +336,6 @@ The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstr
 \subsubsection{Mesh structure}
 \label{sec:background_structure}
 
-As well as reordering data to reduce the effective working-set size, one can sometimes exploit the structure of the mesh itself to reduce the \textit{actual} working-set size.
-
-Meshes can (usually) be classified into one of two types: \textit{structured} or \textit{unstructured}.
-The fundamental difference between the two is that structured grids can determine their neighbouring entities (i.e. perform the queries from Figure~\ref{fig:plex_restrictions}) via mathematical relations.
-This means that data accesses have the form \mintinline{c}{x[f(i)]}.
-By contrast, unstructured meshes have no structure they can exploit to determine their neighbours and hence need to tabulate these adjacency relations, resulting in accesses of the form \mintinline{c}{x[map[i]]}.
-
-Structured meshes are known to have faster access to data than unstructured meshes.
-This is for the following reasons:
-
-\begin{itemize}
-  \item
-    \textit{Beneficial data layout} \\
-    Since the data layout of a structured mesh is completely regular, we get a higher rate of cache hits as we iterate over the mesh.
-    This is because there will be data reuse on the face where the two cells meet and also the hardware prefetcher will load cache lines for us.
-
-  \item
-    \textit{Less memory is required per data access} \\
-    Since lookup tables are not required for locating data, the total volume of data required from main memory is reduced.
-
-  \item
-    \textit{Smaller working-set size} \\
-    We need less data in order to compute a single stencil.
-    If this volume exceeds the size of a particular level in the cache hierarchy then the next one down needs to get used and this will have a bandwidth that is orders-of-magnitude slower.
-    Note that this is unlikely to be much of a problem.
-
-  \item
-    \textit{Aids software prefetching} \\
-    If the compiler can see that data is accessed in a particular pattern, it can emit prefetch instructions such that data will already be in the cache.
-\end{itemize}
-
 \begin{figure}
   \centering
   \begin{tikzpicture}[scale=1.5]
@@ -418,6 +387,38 @@ This is for the following reasons:
   \label{fig:extruded}
 \end{figure}
 
+
+As well as reordering data to reduce the effective working-set size, one can sometimes exploit the structure of the mesh itself to reduce the \textit{actual} working-set size.
+
+Meshes can (usually) be classified into one of two types: \textit{structured} or \textit{unstructured}.
+The fundamental difference between the two is that structured grids can determine their neighbouring entities (i.e. perform the queries from Figure~\ref{fig:plex_restrictions}) via mathematical relations.
+This means that data accesses have the form \mintinline{c}{x[f(i)]}.
+By contrast, unstructured meshes have no structure they can exploit to determine their neighbours and hence need to tabulate these adjacency relations, resulting in accesses of the form \mintinline{c}{x[map[i]]}.
+
+Structured meshes are known to have faster access to data than unstructured meshes.
+This is for the following reasons:
+
+\begin{itemize}
+  \item
+    \textit{Beneficial data layout} \\
+    Since the data layout of a structured mesh is completely regular, we get a higher rate of cache hits as we iterate over the mesh.
+    This is because there will be data reuse on the face where the two cells meet and also the hardware prefetcher will load cache lines for us.
+
+  \item
+    \textit{Less memory is required per data access} \\
+    Since lookup tables are not required for locating data, the total volume of data required from main memory is reduced.
+
+  \item
+    \textit{Smaller working-set size} \\
+    We need less data in order to compute a single stencil.
+    If this volume exceeds the size of a particular level in the cache hierarchy then the next one down needs to get used and this will have a bandwidth that is orders-of-magnitude slower.
+    Note that this is unlikely to be much of a problem.
+
+  \item
+    \textit{Aids software prefetching} \\
+    If the compiler can see that data is accessed in a particular pattern, it can emit prefetch instructions such that data will already be in the cache.
+\end{itemize}
+
 These benefits have motivated the design of \textit{partially-structured} meshes, where only portions of the mesh are structured.
 Examples include: block-structured meshes, regularly refined meshes and extruded.
 
@@ -450,35 +451,7 @@ Taking into consideration that this represents a reasonable worst-case example -
 Though we do address adding support for partially-structured meshes in Section~\ref{sec:future_partialstructure}, initial work on \pyop3 does not focus on it.
 
 \subsection{Orienting degrees-of-freedom}
-
-One significant challenge stencil applications face when applied to \glspl{pde} is on agreeing on a consistent orientation of the \glspl{dof} for shared entities.
-% introduce ``reference'' as a term
-%Note that we use the term ``reference'' here to mean ``the canonical arrangement of \glspl{dof} that is expected by the local kernel''.
-
-To demonstrate the issue, consider the \gls{dof} arrangements shown in Figure~\ref{fig:orient}.
-Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_vector_ref} show the reference \gls{dof} arrangements for an arbitrary space on triangles, with scalar or vector \glspl{dof} on the edges respectively.
-Likewise, Figures~\ref{fig:orient_basic_flip} and~\ref{fig:orient_vector_flip} show the resulting \gls{dof} arrangements for the same spaces but with one of the edges flipped.
-In either flipped case, were the \glspl{dof} to be naively packed into a local temporary and passed to a local kernel, the results would be incorrect as the \glspl{dof} would be passed in in the wrong order.
-
-For many cell types, the orientation problem can be avoided through renumbering the mesh such that adjacent entities agree on the orientations of any shared facets or edges.
-In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyMathrmdiv2010}, as well as quadrilaterals and (some) hexes~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
-\dots
-Hexes are annoying because they cannot be oriented in parallel and some meshes (e.g. Mo(..)bius strip) are not orientable.
-But. We want them for tokamaks (cite).
-
-However, for more complicated cell types with more complex symmetry groups (e.g. hexes or pyramids), the issue of orientation cannot be avoided by a simple renumbering and \gls{dof} transformations are needed to be able to collect the \glspl{dof} in a suitable reference order.
-For scalar-valued \glspl{dof}, one simply needs to permute the order in which \glspl{dof} are loaded into the local temporary.
-This can easily be done in advance and be encapsulated by, for example, a PyOP2 \mintinline{python}{Map}.
-This approach is insufficient for vector-valued \glspl{dof} though as components may still be pointing in the wrong direction.
-This is demonstrated in Figure~\ref{fig:orient_vector_flip} where one can see that simply permuting the \glspl{dof} on the flipped edge would not be enough.
-One also needs to multiply the values by $-1$ in order to get the vectors pointing in the right direction.
-The situation is further complicated in 3D where one could have two tangent vectors per \gls{dof} on each face, requiring the application of a $2\times2$ rotation matrix to reach consensus.
-
-The general solution to orienting \glspl{dof} for stencil application is therefore as follows:
-First, one loads the (permuted) \glspl{dof} associated with a particular entity, along with a bitarray encoding the entity's orientation.
-Then, one can apply appropriate transformations to the loaded \glspl{dof} such that they can be correctly passed through to the local kernel.
-This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{}.
-However, to our knowledge, this is not performed by any existing stencil library.
+\label{sec:background_orientation}
 
 \begin{figure}
   \centering
@@ -521,7 +494,7 @@ However, to our knowledge, this is not performed by any existing stencil library
       \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
       \node at (e2d1) {$b$};
     \end{tikzpicture}
-    \caption{}
+    \caption{Canonical orientation for unoriented \glspl{dof}.}
     \label{fig:orient_basic_ref}
   \end{subfigure}
   %
@@ -681,10 +654,41 @@ However, to our knowledge, this is not performed by any existing stencil library
       \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
       \node at (e2d1) {$b$};
     \end{tikzpicture}
-    \caption{}
+    \caption{Triangle with ...} % orientation aware?
+    % from basix: "the direction of the vector used to define the DOF"
     \label{fig:orient_vector_flip}
   \end{subfigure}
 
-  \caption{}
+  \caption{Example orientations of a triangular element with 2 \glspl{dof} per edge.}
   \label{fig:orient}
 \end{figure}
+
+One significant challenge stencil applications face when applied to \glspl{pde} is on agreeing on a consistent orientation of the \glspl{dof} for shared entities.
+% introduce ``reference'' as a term
+%Note that we use the term ``reference'' here to mean ``the canonical arrangement of \glspl{dof} that is expected by the local kernel''.
+
+To demonstrate the issue, consider the \gls{dof} arrangements shown in Figure~\ref{fig:orient}.
+Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_vector_ref} show the reference \gls{dof} arrangements for an arbitrary space on triangles, with scalar or vector \glspl{dof} on the edges respectively.
+Likewise, Figures~\ref{fig:orient_basic_flip} and~\ref{fig:orient_vector_flip} show the resulting \gls{dof} arrangements for the same spaces but with one of the edges flipped.
+In either flipped case, were the \glspl{dof} to be naively packed into a local temporary and passed to a local kernel, the results would be incorrect as the \glspl{dof} would be passed in in the wrong order.
+
+For many cell types, the orientation problem can be avoided through renumbering the mesh such that adjacent entities agree on the orientations of any shared facets or edges.
+In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyDiv2010}, as well as quadrilaterals and (some) hexes~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
+\dots
+Hexes are annoying because they cannot be oriented in parallel and some meshes (e.g. Mo(..)bius strip) are not orientable.
+But. We want them for tokamaks (cite).
+
+However, for more complicated cell types with more complex symmetry groups (e.g. hexes or pyramids), the issue of orientation cannot be avoided by a simple renumbering and \gls{dof} transformations are needed to be able to collect the \glspl{dof} in a suitable reference order.
+For scalar-valued \glspl{dof}, one simply needs to permute the order in which \glspl{dof} are loaded into the local temporary.
+This can easily be done in advance and be encapsulated by, for example, a PyOP2 \mintinline{python}{Map}.
+This approach is insufficient for vector-valued \glspl{dof} though as components may still be pointing in the wrong direction.
+This is demonstrated in Figure~\ref{fig:orient_vector_flip} where one can see that simply permuting the \glspl{dof} on the flipped edge would not be enough.
+One also needs to multiply the values by $-1$ in order to get the vectors pointing in the right direction.
+The situation is further complicated in 3D where one could have two tangent vectors per \gls{dof} on each face, requiring the application of a $2\times2$ rotation matrix to reach consensus.
+
+The general solution to orienting \glspl{dof} for stencil application is therefore as follows:
+First, one loads the (permuted) \glspl{dof} associated with a particular entity, along with a bitarray encoding the entity's orientation.
+Then, one can apply appropriate transformations to the loaded \glspl{dof} such that they can be correctly passed through to the local kernel.
+This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{}.
+However, to our knowledge, this is not performed by any existing stencil library.
+
