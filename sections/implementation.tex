@@ -391,10 +391,11 @@ Parallel sparse matrices are considerably more challenging to implement and so w
 \subsubsection{Orienting degrees-of-freedom}
 \label{sec:impl_orientation}
 
-Having a hierarchical, `mesh-aware' data layout makes it much more straightforward to correctly handle orientations when packing stencils.
-The way it works is as follows:
-1) The DMPlex restrictions return orientation information of the mesh entities as well as the multi-index,
-2) Each axis below the one selected by the map is transformed according to some predefined rule, using the orientation as a selector for the transformation.
+% an advantage we have over Basix is we differentiate between nodes and dofs so can transform them
+% separately. transformation matrices are very very small.
+
+Having a hierarchical, `mesh-aware' data layout makes it straightforward to correctly handle orientations when packing stencils.
+If the maps are augmented to also return relative orientation information (i.e. it identifies `flipped' edges etc), then the packing code can apply the correct transformations for each level of the \py{MultiAxis}.
 
 As an example, we refer back to Figure~\ref{fig:orient_vector_flip}.
 Noting that the data layout will decompose into points, nodes-per-point and \glspl{dof}-per-node, the transformation to canonical layout is done in two steps: permuting the nodes on the edge and flipping the individual \glspl{dof} such that they point in the right direction.

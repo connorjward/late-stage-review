@@ -73,6 +73,7 @@ Importantly, this abstraction does not contain any concept of the underlying mes
 \subsubsection{Mesh representations}
 
 % need to emphasise the difference between nodes and points
+% and basis functions vs coefficients - ref orientation issues discussed later
 
 In software, a mesh is typically represented by a collection of sets of entities (e.g. cells or faces), coupled with adjacency relations between these sets.
 Possible abstractions capturing this behaviour include databases (ebb, moab) or hypergraphs (simit).
@@ -453,91 +454,136 @@ Though we do address adding support for partially-structured meshes in Section~\
 \subsection{Orienting degrees-of-freedom}
 \label{sec:background_orientation}
 
+% FIXME: Use BDM for vec-valued (H(div) conforming and P3 for scalar-valued
 \begin{figure}
+  % macros
+  \newcommand{\trianglestyles}{%
+    \tikzstyle {segment} = [line width=1.2pt];
+    \tikzstyle {dof} = [draw=black,line width=1.2pt];
+    \tikzstyle {celldof} = [dof,fill=blue!50];
+    \tikzstyle {edgedof} = [dof,fill=red!60];
+    \tikzstyle {vertdof} = [dof,fill=yellow!80];
+    \tikzstyle {doftext} = [font=\bf];
+    \tikzstyle {vdof} = [-stealth,draw=red!60,line width=1.9];
+  }
+
+  \newcommand{\stylesegmentsone}{%
+    \tkzSetUpStyle[
+      postaction=decorate,
+      decoration={
+        markings,
+        mark=at position .53 with {\arrow[very thick]{##1}},
+      }
+    ]{myarrow}
+  }
+
+  \newcommand{\stylesegmentstwo}{%
+    \tkzSetUpStyle[
+      postaction=decorate,
+      decoration={
+        markings,
+        mark=at position .78 with {\arrow[very thick]{##1}},
+        mark=at position .28 with {\arrow[very thick]{##1}},
+      }
+    ]{myarrow}
+  }
+
+  \newcommand{\deftriangle}{%
+    \trianglestyles
+    \tkzDefPoint(0,0){v0}
+    \tkzDefShiftPoint[v0](0:3){v1}
+    \tkzDefShiftPoint[v0](60:3){v2}
+  }
+
+  \newcommand{\drawtriangle}{%
+    \deftriangle
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v1)
+    \tkzDrawSegment[myarrow=stealth,segment](v1,v2)
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v2)
+  }
+
+  \newcommand{\drawflippedtriangle}{%
+    \deftriangle
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v1)
+    \tkzDrawSegment[myarrow=stealth,segment](v2,v1)
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v2)
+  }
+
+  % figure
   \centering
   \begin{subfigure}{0.45\textwidth}
     \centering
     \begin{tikzpicture}
-      % setup
-      \tkzSetUpStyle[
-        postaction=decorate,
-        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
-      ]{myarrow}
+      \stylesegmentsone
+      \drawtriangle
 
-      % triangle
-      \tkzDefPoint(0,0){v0}
-      \tkzDefShiftPoint[v0](0:4){v1}
-      \tkzDefShiftPoint[v0](60:4){v2}
-      \tkzDrawSegment[myarrow=stealth](v0,v1)
-      \tkzDrawSegment[myarrow=stealth](v1,v2)
-      \tkzDrawSegment[myarrow=stealth](v0,v2)
-      \tkzDrawPoints(v0,v1,v2)
+      % vert dofs
+      \filldraw [vertdof] (v0) node [doftext] {0} circle [radius=7pt];
+      \filldraw [vertdof] (v1) node [doftext] {1} circle [radius=7pt];
+      \filldraw [vertdof] (v2) node [doftext] {2} circle [radius=7pt];
 
       % edge dofs
-      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+      \tkzDefBarycentricPoint(v0=2.3,v1=1) \tkzGetPoint{e0d0}
+      \filldraw [edgedof] (e0d0) node [doftext] {7} circle [radius=7pt];
 
-      \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
-      \node at (e0d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
-      \node at (e0d1) {$b$};
-      \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
-      \node at (e1d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
-      \node at (e1d1) {$b$};
-      \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
-      \node at (e2d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
-      \node at (e2d1) {$b$};
+      \tkzDefBarycentricPoint(v0=1,v1=2.3) \tkzGetPoint{e0d1}
+      \filldraw [edgedof] (e0d1) node [doftext] {8} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=2.3,v2=1) \tkzGetPoint{e1d0}
+      \filldraw [edgedof] (e1d0) node [doftext] {3} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=1,v2=2.3) \tkzGetPoint{e1d1}
+      \filldraw [edgedof] (e1d1) node [doftext] {4} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=2.3,v2=1) \tkzGetPoint{e2d0}
+      \filldraw [edgedof] (e2d0) node [doftext] {5} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v2=2.3) \tkzGetPoint{e2d1}
+      \filldraw [edgedof] (e2d1) node [doftext] {6} circle [radius=7pt];
+
+      % cell dof
+      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0d0}
+      \filldraw [celldof] (c0d0) node [doftext] {9} circle [radius=7pt];
     \end{tikzpicture}
-    \caption{Canonical orientation for unoriented \glspl{dof}.}
+    \caption{Reference Lagrange finite element with polynomial degree 3.}
     \label{fig:orient_basic_ref}
   \end{subfigure}
   %
   \begin{subfigure}{0.45\textwidth}
     \centering
     \begin{tikzpicture}
-      % setup
-      \tkzSetUpStyle[
-        postaction=decorate,
-        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
-      ]{myarrow}
+      \stylesegmentsone
+      \drawflippedtriangle
 
-      % triangle
-      \tkzDefPoint(0,0){v0}
-      \tkzDefShiftPoint[v0](0:4){v2}
-      \tkzDefShiftPoint[v0](60:4){v1}
-      \tkzDrawSegment[myarrow=stealth](v0,v1)
-      \tkzDrawSegment[myarrow=stealth](v1,v2)
-      \tkzDrawSegment[myarrow=stealth](v0,v2)
-      \tkzDrawPoints(v0,v1,v2)
+      % vert dofs
+      \filldraw [vertdof] (v0) node [doftext] {0} circle [radius=7pt];
+      \filldraw [vertdof] (v1) node [doftext] {1} circle [radius=7pt];
+      \filldraw [vertdof] (v2) node [doftext] {2} circle [radius=7pt];
 
       % edge dofs
-      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+      \tkzDefBarycentricPoint(v0=2.3,v1=1) \tkzGetPoint{e0d0}
+      \filldraw [edgedof] (e0d0) node [doftext] {7} circle [radius=7pt];
 
-      \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
-      \node at (e0d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
-      \node at (e0d1) {$b$};
-      \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
-      \node at (e1d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
-      \node at (e1d1) {$b$};
-      \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
-      \node at (e2d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
-      \node at (e2d1) {$b$};
+      \tkzDefBarycentricPoint(v0=1,v1=2.3) \tkzGetPoint{e0d1}
+      \filldraw [edgedof] (e0d1) node [doftext] {8} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=2.3,v2=1) \tkzGetPoint{e1d0}
+      \filldraw [edgedof] (e1d0) node [doftext] {4} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=1,v2=2.3) \tkzGetPoint{e1d1}
+      \filldraw [edgedof] (e1d1) node [doftext] {3} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=2.3,v2=1) \tkzGetPoint{e2d0}
+      \filldraw [edgedof] (e2d0) node [doftext] {5} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v2=2.3) \tkzGetPoint{e2d1}
+      \filldraw [edgedof] (e2d1) node [doftext] {6} circle [radius=7pt];
+
+      % cell dof
+      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0d0}
+      \filldraw [celldof] (c0d0) node [doftext] {9} circle [radius=7pt];
     \end{tikzpicture}
-    \caption{}
+    \caption{Degree 3 Lagrange finite element with an edge flipped.}
     \label{fig:orient_basic_flip}
   \end{subfigure}
 
@@ -546,149 +592,91 @@ Though we do address adding support for partially-structured meshes in Section~\
   \begin{subfigure}{0.45\textwidth}
     \centering
     \begin{tikzpicture}
-      % setup
-      \tkzSetUpStyle[
-        postaction=decorate,
-        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
-      ]{myarrow}
-
-      % triangle
-      \tkzDefPoint(0,0){v0}
-      \tkzDefShiftPoint[v0](0:4){v1}
-      \tkzDefShiftPoint[v0](60:4){v2}
-      \tkzDrawSegment[myarrow=stealth](v0,v1)
-      \tkzDrawSegment[myarrow=stealth](v1,v2)
-      \tkzDrawSegment[myarrow=stealth](v0,v2)
-      \tkzDrawPoints(v0,v1,v2)
+      \stylesegmentstwo
+      \drawtriangle
 
       % edge dofs
-      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+      \tkzDefBarycentricPoint(v0=1,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefShiftPoint[e0d0](-90:.8){e0d0v}
+      \draw [vdof] (e0d0) -- (e0d0v);
+      \filldraw [edgedof] (e0d0) node [doftext] {2} circle [radius=7pt];
 
-      % arrows
-      \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
-      \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
-      \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
-      \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
-      \tkzDefShiftPoint[e1d0](30:.6){e1d0v}
-      \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
-      \tkzDefShiftPoint[e1d1](30:.6){e1d1v}
-      \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
-      \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
-      \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
-      \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
-      \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
+      \tkzDefBarycentricPoint(v0=1,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefShiftPoint[e1d0](150:.8){e1d0v}
+      \draw [vdof] (e1d0) -- (e1d0v);
+      \filldraw [edgedof] (e1d0) node [doftext] {1} circle [radius=7pt];
 
-      % filled bits
-      \filldraw [draw=black,fill=red!80,line width=.7] (e0d0) circle [radius=7pt];
-      \node at (e0d0) {$a$};
-      \filldraw [draw=black,fill=red!80,line width=.7] (e0d1) circle [radius=7pt];
-      \node at (e0d1) {$b$};
-      \filldraw [draw=black,fill=red!80,line width=.7] (e1d0) circle [radius=7pt];
-      \node at (e1d0) {$a$};
-      \filldraw [draw=black,fill=red!80,line width=.7] (e1d1) circle [radius=7pt];
-      \node at (e1d1) {$b$};
-      \filldraw [draw=black,fill=red!80,line width=.7] (e2d0) circle [radius=7pt];
-      \node at (e2d0) {$a$};
-      \filldraw [draw=black,fill=red!80,line width=.7] (e2d1) circle [radius=7pt];
-      \node at (e2d1) {$b$};
+      \tkzDefBarycentricPoint(v1=1,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefShiftPoint[e2d0](210:.8){e2d0v}
+      \draw [vdof] (e2d0) -- (e2d0v);
+      \filldraw [edgedof] (e2d0) node [doftext] {0} circle [radius=7pt];
     \end{tikzpicture}
-    \caption{}
+    \caption{Reference Raviart-Thomas finite element.}
     \label{fig:orient_vector_ref}
   \end{subfigure}
   %
   \begin{subfigure}{0.45\textwidth}
     \centering
     \begin{tikzpicture}
-      % setup
-      \tkzSetUpStyle[
-        postaction=decorate,
-        decoration={markings, mark=at position .52 with {\arrow[very thick]{#1}} }
-      ]{myarrow}
-
-      % triangle
-      \tkzDefPoint(0,0){v0}
-      \tkzDefShiftPoint[v0](0:4){v1}
-      \tkzDefShiftPoint[v0](60:4){v2}
-      \tkzDrawSegment[myarrow=stealth](v0,v1)
-      \tkzDrawSegment[myarrow=stealth](v2,v1)
-      \tkzDrawSegment[myarrow=stealth](v0,v2)
-      \tkzDrawPoints(v0,v1,v2)
+      \stylesegmentstwo
+      \drawflippedtriangle
 
       % edge dofs
-      \tkzDefBarycentricPoint(v0=2,v1=1) \tkzGetPoint{e0d0}
-      \tkzDefBarycentricPoint(v0=1,v1=2) \tkzGetPoint{e0d1}
-      \tkzDefBarycentricPoint(v1=2,v2=1) \tkzGetPoint{e1d0}
-      \tkzDefBarycentricPoint(v1=1,v2=2) \tkzGetPoint{e1d1}
-      \tkzDefBarycentricPoint(v0=2,v2=1) \tkzGetPoint{e2d0}
-      \tkzDefBarycentricPoint(v0=1,v2=2) \tkzGetPoint{e2d1}
+      \tkzDefBarycentricPoint(v0=1,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefShiftPoint[e0d0](-90:.8){e0d0v}
+      \draw [vdof] (e0d0) -- (e0d0v);
+      \filldraw [edgedof] (e0d0) node [doftext] {2} circle [radius=7pt];
 
-      % arrows
-      \tkzDefShiftPoint[e0d0](-90:.6){e0d0v}
-      \draw[-stealth,draw=red!80,line width=1] (e0d0) -- (e0d0v);
-      \tkzDefShiftPoint[e0d1](-90:.6){e0d1v}
-      \draw[-stealth,draw=red!80,line width=1] (e0d1) -- (e0d1v);
-      \tkzDefShiftPoint[e1d0](210:.6){e1d0v}
-      \draw[-stealth,draw=red!80,line width=1] (e1d0) -- (e1d0v);
-      \tkzDefShiftPoint[e1d1](210:.6){e1d1v}
-      \draw[-stealth,draw=red!80,line width=1] (e1d1) -- (e1d1v);
-      \tkzDefShiftPoint[e2d0](150:.6){e2d0v}
-      \draw[-stealth,draw=red!80,line width=1] (e2d0) -- (e2d0v);
-      \tkzDefShiftPoint[e2d1](150:.6){e2d1v}
-      \draw[-stealth,draw=red!80,line width=1] (e2d1) -- (e2d1v);
+      \tkzDefBarycentricPoint(v0=1,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefShiftPoint[e1d0](150:.8){e1d0v}
+      \draw [vdof] (e1d0) -- (e1d0v);
+      \filldraw [edgedof] (e1d0) node [doftext] {1} circle [radius=7pt];
 
-      \filldraw [draw=black,fill=red!80] (e0d0) circle [radius=7pt];
-      \node at (e0d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e0d1) circle [radius=7pt];
-      \node at (e0d1) {$b$};
-      \filldraw [draw=black,fill=red!80] (e1d0) circle [radius=7pt];
-      \node at (e1d0) {$b$};
-      \filldraw [draw=black,fill=red!80] (e1d1) circle [radius=7pt];
-      \node at (e1d1) {$a$};
-      \filldraw [draw=black,fill=red!80] (e2d0) circle [radius=7pt];
-      \node at (e2d0) {$a$};
-      \filldraw [draw=black,fill=red!80] (e2d1) circle [radius=7pt];
-      \node at (e2d1) {$b$};
+      \tkzDefBarycentricPoint(v1=1,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefShiftPoint[e2d0](30:.8){e2d0v}
+      \draw [vdof] (e2d0) -- (e2d0v);
+      \filldraw [edgedof] (e2d0) node [doftext] {0} circle [radius=7pt];
     \end{tikzpicture}
-    \caption{Triangle with ...} % orientation aware?
-    % from basix: "the direction of the vector used to define the DOF"
+    \caption{Raviart-Thomas element with an edge flipped.}
     \label{fig:orient_vector_flip}
   \end{subfigure}
 
-  \caption{Example orientations of a triangular element with 2 \glspl{dof} per edge.}
+  \caption{The effect of edge flips on both scalar- and vector-valued finite elements on triangles.}
   \label{fig:orient}
 \end{figure}
 
-One significant challenge stencil applications face when applied to \glspl{pde} is on agreeing on a consistent orientation of the \glspl{dof} for shared entities.
-% introduce ``reference'' as a term
-%Note that we use the term ``reference'' here to mean ``the canonical arrangement of \glspl{dof} that is expected by the local kernel''.
+When writing the local stencil computation to be performed at each iteration, the process is considerably simplified by assuming that the data being passed in from the iteration engine (here \pyop3) is in some canonical ordering.
+Unfortunately, guaranteeing such an ordering a priori is often difficult as entities in the stencil may have different relative orientations.
+To give an example, with an arbitrary global numbering of vertices, it is possible for a triangle mesh to contain triangles with `flipped' edges (Figure~\ref{fig:orient}).
+As a consequence, the stencil data passed to the local kernel will be out-of-order and the resulting computation will be wrong.
 
-To demonstrate the issue, consider the \gls{dof} arrangements shown in Figure~\ref{fig:orient}.
-Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_vector_ref} show the reference \gls{dof} arrangements for an arbitrary space on triangles, with scalar or vector \glspl{dof} on the edges respectively.
-Likewise, Figures~\ref{fig:orient_basic_flip} and~\ref{fig:orient_vector_flip} show the resulting \gls{dof} arrangements for the same spaces but with one of the edges flipped.
-In either flipped case, were the \glspl{dof} to be naively packed into a local temporary and passed to a local kernel, the results would be incorrect as the \glspl{dof} would be passed in in the wrong order.
+The situation is further complicated when the \glspl{dof} stored at each node are vector-valued, for example with \hdiv and \hcurl conforming elements in the \gls{fem}.
+With vector \glspl{dof} it can happen that, as well as possibly being out-of-order, the loaded vectors can `point' in the wrong direction, requiring the application of some transformation to achieve a canonical representation.
+For example, in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} one can see that the effect of `flipping' an edge inverts the direction of the vector \glspl{dof} so the loaded data must be multiplied by -1.
+For vector-valued \glspl{dof} on facets in 3D things get even more difficult because the \glspl{dof} can be defined relative to the two tangent vectors on the facet and so $2\times2$ matrix rotations may be required.
 
-For many cell types, the orientation problem can be avoided through renumbering the mesh such that adjacent entities agree on the orientations of any shared facets or edges.
-In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyDiv2010}, as well as quadrilaterals and (some) hexes~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
-\dots
-Hexes are annoying because they cannot be oriented in parallel and some meshes (e.g. Mo(..)bius strip) are not orientable.
-But. We want them for tokamaks (cite).
+\subsubsection{A partial solution: Mesh renumbering}
 
-However, for more complicated cell types with more complex symmetry groups (e.g. hexes or pyramids), the issue of orientation cannot be avoided by a simple renumbering and \gls{dof} transformations are needed to be able to collect the \glspl{dof} in a suitable reference order.
-For scalar-valued \glspl{dof}, one simply needs to permute the order in which \glspl{dof} are loaded into the local temporary.
-This can easily be done in advance and be encapsulated by, for example, a PyOP2 \mintinline{python}{Map}.
-This approach is insufficient for vector-valued \glspl{dof} though as components may still be pointing in the wrong direction.
-This is demonstrated in Figure~\ref{fig:orient_vector_flip} where one can see that simply permuting the \glspl{dof} on the flipped edge would not be enough.
-One also needs to multiply the values by $-1$ in order to get the vectors pointing in the right direction.
-The situation is further complicated in 3D where one could have two tangent vectors per \gls{dof} on each face, requiring the application of a $2\times2$ rotation matrix to reach consensus.
+The approach used to `fix' the orientation issue used in most finite element libraries is to exploit the fact that, for a variety of cell types, it is possible to determine a global numbering of the vertices of the mesh such that all cells have the same orientation.
+In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyDiv2010} and quadrilaterals~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
+It is also possible to number unstructured hexahedral meshes in this manner, but the algorithm cannot be performed in parallel and it will not work for all possible meshes~\cite{agelekOrientingEdgesUnstructured2017}.
+In particular, if a subset of the mesh forms a Möbius strip then it is not orientable.
 
-The general solution to orienting \glspl{dof} for stencil application is therefore as follows:
-First, one loads the (permuted) \glspl{dof} associated with a particular entity, along with a bitarray encoding the entity's orientation.
-Then, one can apply appropriate transformations to the loaded \glspl{dof} such that they can be correctly passed through to the local kernel.
+Furthermore, a renumbering strategy is not known for more exotic cell types like pyramids and it also prohibits any \textit{mixed mesh} methods, where the mesh contains more than one cell type.
+
+It is clear that a renumbering strategy is not a sufficiently general solution to the orientation problem.
+Therefore the stencil library abstraction needs to permit for different orientations.
+
+\subsubsection{The next step: Permuting scalar \glspl{dof}}
+
+As shown in Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_basic_flip}, loading scalar data for cells with `flipped' edges will result in the data being packed in the wrong order.
+To avoid this, the \glspl{dof} need to be \textit{permuted} prior to packing.
+This permutation can actually be precomputed and tabulated and handled by the input indirection map.
+
+\subsubsection{All the way there: Transforming vector \glspl{dof}}
+
+The above approach works for all scalar-valued function spaces, but is insufficient for vector-valued ones due to the need for transformations of the \gls{dof} values themselves.
+For example, as described above, the flip shown in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} mean that the \glspl{dof} need to be scaled by -1 prior to packing.
+It is not possible to store non-permutation transformations inside an indirection map and so the stencil application needs to implement a separate stage to resolve these orientation transformations.
 This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{}.
 However, to our knowledge, this is not performed by any existing stencil library.
-
