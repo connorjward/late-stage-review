@@ -1,11 +1,11 @@
 \section{Background}
 
-In this chapter we review: existing software abstractions for mesh computations, common strategies for optimising performance, and mesh-specific optimisations.
+In this section we review existing software abstractions for mesh computations and discuss common strategies for optimising performance.
 
-\subsection{Existing software abstractions}
-
-\subsubsection{Stencil languages}
+\subsection{Stencil languages}
 \label{sec:stencillang}
+
+% TODO what is a stencil language?
 
 % can be classified according to whether or not they know about the mesh - makes describing connectivity clearer,
 % but requires a hand-written mesh implementation lacking features and hard to maintain
@@ -44,8 +44,10 @@ Another library for the application of stencil operations, specifically high-ord
 % libceed - actually offloaded to PETSc for element restriction (the bit PyOP2 does)
 % it's nice that libCEED and PyOP2 use DMPlex as the burden of other mesh operations (e.g. distribution, I/O, refinement) are very non-trivial
 
+\subsubsection{PyOP2}
+
 PyOP2 is a domain-specific language for expressing computations over unstructured meshes.
-It is the direct precursor, and inspiration for, \projectname.
+It is the direct precursor, and inspiration for, \pyop3.
 
 It distinguishes itself from OP2, a library depending on the same abstractions, by using run-time code generation instead of static analysis and transformation of the source code.
 
@@ -70,7 +72,92 @@ Importantly, this abstraction does not contain any concept of the underlying mes
 
 % Liszt, Simit - notably associates data information with topological entities
 
-\subsubsection{Mesh representations}
+\subsection{Mesh representations}
+
+\begin{figure}
+  \centering
+  \begin{subfigure}{0.45\textwidth}
+    \begin{tikzpicture}
+      \tkzDefPoint(0,2){v0}
+      \tkzDefPoint(2,4){v1}
+      \tkzDefPoint(2,0){v2}
+      \tkzDefPoint(4,2){v3}
+
+      \tkzDrawSegments(v0,v1 v0,v2 v1,v2 v1,v3 v2,v3)
+      \tkzDrawPoints(v0,v1,v2,v3)
+
+      \tkzDefBarycentricPoint(v0=1.2,v1=1,v2=1) \tkzGetPoint{c0}
+      \tkzLabelPoint[centered](c0){1}
+      \tkzDefBarycentricPoint(v1=1,v2=1,v3=1.2) \tkzGetPoint{c1}
+      \tkzLabelPoint[centered](c1){2}
+
+      \tkzLabelPoint[left](v0){3}
+      \tkzLabelPoint[above](v1){4}
+      \tkzLabelPoint[below](v2){5}
+      \tkzLabelPoint[right](v3){6}
+
+      \tkzLabelSegment[below left](v0,v2){7}
+      \tkzLabelSegment[above left](v0,v1){8}
+      \tkzLabelSegment[left](v1,v2){9}
+      \tkzLabelSegment[above right](v1,v3){10}
+      \tkzLabelSegment[below right](v2,v3){11}
+    \end{tikzpicture}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+    \end{tikzpicture}
+  \end{subfigure}
+  \caption{An example mesh and its Hasse diagram representation.}
+  \label{fig:hasse_diagram}
+\end{figure}
+
+\begin{figure}
+  \centering
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 7,9;
+      \draw [dashed] (1) circle [radius=15pt];
+    \end{tikzpicture}
+    \caption{$\cone(1) = \{7,8,9\}$}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 1,2;
+      \draw [dashed] (9) circle [radius=15pt];
+    \end{tikzpicture}
+    \caption{$\support(9) = \{1,2\}$}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 1,7,3,5,9;
+    \end{tikzpicture}
+    \caption{$\closure(1) = \{1,3,4,5,7,8,9\}$}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \basichasse
+      \drawpolygon 4,10,2,1,8;
+    \end{tikzpicture}
+    \caption{$\plexstar(4) = \{4,8,9,10,1,2\}$}
+  \end{subfigure}
+
+  \caption{The possible DMPlex restriction queries (applied to the Hasse diagram from Figure~\ref{fig:hasse_diagram}).}
+  \label{fig:plex_restrictions}
+\end{figure}
+
 
 % need to emphasise the difference between nodes and points
 % and basis functions vs coefficients - ref orientation issues discussed later
@@ -88,81 +175,6 @@ More specifically, the points and relations form a \gls{poset} such that the mes
 
 It is important to note that DMPlex works for arbitrary dimension.
 
-\begin{figure}
-  \begin{subfigure}{0.45\textwidth}
-    \begin{tikzpicture}
-      \draw (0,2) -- (2,0);
-      \draw (0,2) -- (2,4);
-      \draw (2,0) -- (2,4);
-      \draw (2,0) -- (4,2);
-      \draw (2,4) -- (4,2);
-
-      \node[at={(1,2)}, xshift=.2cm] {1};
-      \node[at={(3,2)}, xshift=-.2cm] {2};
-      \node[at={(0,2)}, xshift=-.2cm] {3};
-      \node[at={(2,4)}, yshift=.2cm] {4};
-      \node[at={(2,0)}, yshift=-.2cm] {5};
-      \node[at={(4,2)}, xshift=.2cm] {6};
-      \node[at={(1,1)}, xshift=-.2cm, yshift=-.2cm] {7};
-      \node[at={(1,3)}, xshift=-.2cm, yshift=.2cm] {8};
-      \node[at={(2,2)}, xshift=-.2cm] {9};
-      \node[at={(3,3)}, xshift=.2cm, yshift=.2cm] {10};
-      \node[at={(3,1)}, xshift=.2cm, yshift=-.2cm] {11};
-    \end{tikzpicture}
-  \end{subfigure}
-  %
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \basichasse
-    \end{tikzpicture}
-  \end{subfigure}
-
-  \caption{...}
-  \label{fig:hasse_diagram}
-\end{figure}
-
-\begin{figure}
-  \centering
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \basichasse
-      \drawpolygon 7,9;
-      \draw [dashed] (1) circle [radius=15pt];
-    \end{tikzpicture}
-    \caption{$cone(1)$}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \basichasse
-      \drawpolygon 1,2;
-      \draw [dashed] (9) circle [radius=15pt];
-    \end{tikzpicture}
-    \caption{$supp(9)$}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \basichasse
-      \drawpolygon 1,7,3,5,9;
-    \end{tikzpicture}
-    \caption{$cl(1)$}
-  \end{subfigure}
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \basichasse
-      \drawpolygon 4,10,2,1,8;
-    \end{tikzpicture}
-    \caption{$star(4)$}
-  \end{subfigure}
-
-  \caption{...}
-  \label{fig:plex_restrictions}
-\end{figure}
-
 
 Stencil queries are natural to express at this level.
 For instance, the classical finite element request of ``give me all of the \glspl{dof} that have local support" is simply expressed as the closure of a given cell.
@@ -174,121 +186,78 @@ A \clang{PetscSection} is a simple object that tabulates offsets such that entri
 
 \subsection{Methods for performance optimisation}
 
-In this section we review some of the common bottlenecks in massively parallel simulation codes, and describe some general ways for quantifying and improving performance.
-In particular we focus on challenges for maximising parallel efficiency and the importance of the roofline model for choosing appropriate optimisations.
-The aim is to motivate design choices made in \pyop3.
-
-\subsubsection{Optimisation methodology}
-
-Premature optimisation is a classic trap software developers fall into when they attempt to accelerate their codes.
-It is surprisingly easy to find oneself making assumptions about the locations and causes of bottlenecks, and then wasting a considerable amount of time on optimising code that only constitutes a small fraction of the overall wall-clock time.
-To avoid this scenario, developers should follow the steps below:
-
-\begin{enumerate}
-  \item
-    \textbf{Find a realistic problem to try and accelerate.}
-
-    Performance optimisation is often guided by toy problems that are simple to write and debug.
-    Such problems, though, may end up having significantly different performance characteristics from a realistic simulation that a user would actually run.
-    This can lead to premature optimisation as the wrong hotspots will be targeted.
-    As a relevant example, one could work hard to optimise data movement for the application of low-order matrix-free stencils since the code will be memory-bound (see section~\ref{sec:background_perf_flops}) and so data movement would be the predominant cost.
-    However, matrix-free methods are usually only applied at high-order~\cite{brownPerformancePortableSolid2022}, at which point the code will be compute-bound and the hotspots will be different.
-  \item
-    \textbf{Identify the hotspots.}
-    \dots
-    % flamegraph
-  \item
-    \textbf{Create a performance model.}
-    \dots
-    % roofline, think about message passing if needed
-  \item
-    \textbf{Optimise the code.}
-    \dots
-    % prioritise algorithmic changes over low-level optimisations as these can change convergence stuff
-    % ref TAS spectrum?
-  \item
-    \textbf{Repeat?}
-    \dots
-    % are we at the fundamental limit of the machine?
-    % is our scaling 'good enough'
-\end{enumerate}
+In this section, we review some of the common bottlenecks in massively parallel simulation codes and describe some general ways for quantifying and improving performance.
+In particular, we focus on challenges for maximising parallel efficiency and the importance of the roofline model for choosing appropriate optimisations.
 
 \subsubsection{Achieving parallel efficiency}
 \label{sec:background_perf_efficiency}
 
-In order to run massive simulations, codes must be able to exploit the massive amounts of parallelism afforded to them by modern supercomputers.
+In order to run massive simulations, codes must be able to exploit the vast amounts of parallelism afforded to them by modern supercomputers.
 With the building of ever larger and more parallel machines (especially since we are at the ``dawn of exascale''), this is becoming both more important to get right and more challenging to do so.
 
 To quantify a code's effectiveness in parallel, one typically measures its \textit{parallel efficiency} under either \textit{strong-} or \textit{weak-scaling}:
 
 \begin{paragraph}{Strong-scaling}
-A strong-scaling investigation would solve the same problem but on an increasing number of processors and measure the time-to-solution.
-Perfect efficiency (unity) would be achieved if the time-to-solution on $p$ processors was $p$ times smaller than the time-to-solution for a single process.
-If strong-scaling efficiency is poor, this suggests that there are sizeable portions of the code that are getting run in serial on each process, rather than being divided up.
-A code would be considered to have `good' strong-scaling if it retained high efficiency (e.g. 80\%) at small problem sizes (e.g. 5000 \glspl{dof} per process for \gls{fem}).
+  Strong-scaling describes the behaviour of a code as the number of processes increases for a problem of \textit{fixed size}.
+  In a strong-scaling investigation, perfect efficiency (unity) would be achieved if the time-to-solution on $p$ processors was $p$ times smaller than the time-to-solution for a single process.
+  A code would be considered to have `good' strong-scaling if it retained high efficiency (e.g. 80\%) at small problem sizes (e.g. 5000 \glspl{dof} per process for \gls{fem}).
+
+  If the efficiency is low, this suggests that there are sizeable portions of the code that are getting run in serial on each process, rather than being shared across all processes.
+  To improve efficiency, therefore, one should focus on either reducing this overhead or distributing the work more effectively between processes.
 \end{paragraph}
 
 \begin{paragraph}{Weak-scaling}
-Weak-scaling differs from strong-scaling by, rather than measuring the decrease in time-to-solution for a problem of fixed size, recording the time-to-solution for a range of problem sizes where the size of the problem scales linearly with the number of processors.
-In this case, perfect efficiency is achieved if the time-to-solution remains fixed.
-If a code has poor weak-scaling, this suggests that there are algorithmic problems regarding how the problem is distributed among processors.
-For example, a parallel algorithm that required frequent all-to-all broadcast messages would have poor weak-scaling because this would increase in cost with the number of processors.
-For a code to have `good' weak-scaling, it would need to have a high efficiency (e.g. 80\%) even when run on very large clusters.
+  Weak-scaling differs from strong-scaling in that, rather than describing the decrease in time-to-solution for a problem of fixed size, it describes the behaviour of the code over a \textit{range of problem sizes}, where the size of the problem scales linearly with the number of processors.
+  In this case, perfect efficiency is achieved if the time-to-solution remains fixed with increasing parallelism.
+  For a code to have `good' weak-scaling, it would need to have a high efficiency (e.g. 80\%) even when run on very large clusters.
+
+  If a code has poor weak-scaling, this suggests that there are algorithmic problems regarding how the problem is distributed among processors.
+  For example, a parallel algorithm that required frequent all-to-all broadcast messages would have poor weak-scaling because this would increase in cost with the number of processors.
 \end{paragraph}
 
 \vspace{1em}
 
-Taken together, these two metrics provide a relatively good indicator as to the suitability of a code for running on massively parallel computers, which is naturally essential for simulation codes to be effective.
-More informative measures of performance that take into account things such as convergence rates also exist~\cite{changComparativeStudyFinite2018}, but we eschew such measures here because they fall under the remit of the design of the stencil itself, rather than the stencil \textit{iteration}, which is the focus for this work.
+Taken together, these two metrics provide a relatively good indicator as to the suitability of a code for running on massively parallel computers.
+More informative measures of performance that take into account things such as convergence rates also exist~\cite{changComparativeStudyFinite2018}, but we eschew such approaches here because they fall under the remit of the design of the stencil itself, which is not the focus for this work.
 
 \subsubsection{Maximising floating-point throughput}
 \label{sec:background_perf_flops}
 
-Once we have a code that scales well, the next step is to optimise performance for a single process.
-In order to do this, one should first profile the code and compare its performance to the theoretical limits of the hardware.
-Doing this provides both a good termination criterion for the optimisation process (you can't go faster than the hardware!), and also guides the developer as to what the performance bottlenecks might be and thus which optimisations might be usefully applied.
-
-As a first step, one should profile the performance-critical kernels in the application to determine their floating-point throughput (the higher the better) and their \gls{ai}.
-Arithmetic intensity is a ratio of the number of \glspl{flop} performed per byte of memory accessed.
-To simplify, a kernel with low arithmetic intensity reads a lot of data from memory but the processor does not need to perform many calculations, and a kernel with high arithmetic intensity performs a lot of calculations per byte of memory accessed.
-An example of a kernel with low \gls{ai} would be \mintinline{c}{z[i] = x[i] + y[i];}; 1 \gls{flop} (addition) is performed for every 3 data accesses (2 reads and 1 write).
-Assuming that \mintinline{c}{x}, \mintinline{c}{y} and \mintinline{c}{z} are 8 bytes each, this gives this operation an \gls{ai} of $1/24$.
-In contrast, a kernel with a high \gls{ai} might include operations of the form \mintinline{c}{y[i] = sqrt(x[i]);}.
-Operations such as square roots and division typically require a large number of \glspl{flop}, increasing the \gls{ai}.
-
-The key insight that \gls{ai} gives us is that some applications are limited by the rate at which \textit{memory is accessed}, and some applications are limited by the rate at which \textit{chips perform \glspl{flop}}.
-These are typically referred to as \textit{memory-bound} and \textit{compute-bound} respectively.
-It is worthwhile to note that there is trend in modern chips for floating-point throughput to increase at a faster rate than memory bandwidth, and so more and more codes are becoming memory-bound.
-
 \begin{figure}
   \input{figures/roofline.pgf}
   \caption{
-    Simplified roofline model.
+    A simplified roofline model.
     The points A, B and C represent computational kernels with different performance characteristics.
   }
   \label{fig:roofline}
 \end{figure}
 
-To determine which regime a kernel belongs to, it can be added to a \textit{roofline} plot similar to the one shown in Figure~\ref{fig:roofline}~\cite{williamsRooflineInsightfulVisual2009}.
-In a roofline plot, the performance limits of the machine are indicated by the solid lines.
-To the right, where \gls{ai} is high, throughput is limited by the speed of the chip and so the line is flat.
-To the left, though, the \gls{ai} is low and so throughput is dependent upon the rate at which data can be supplied to the chip.
-The plot shows two lines for the possible bandwidths to reflect the fact that different problems will have different working-set sizes and so the bandwidth needs to match the appropriate level in the memory hierarchy.
-Similarly, two lines are shown for peak throughput since vectorisation will usually increase the throughput by a factor of 4 or 8.
+% flame graphs? - need to find hotspots
 
-Looking at Figure~\ref{fig:roofline}, we can see how plotting kernels on this can guide the optimisation effort.
-To use the example points (shown in red):
+Once we have a code that scales well, the next step is to optimise performance for a single process.
+In order to do this, one should first profile the code and compare its performance to the theoretical limits of the hardware using a \textit{roofline plot}~\cite{williamsRooflineInsightfulVisual2009}.
+A roofline plot provides both a good termination criterion for the optimisation process - you can't go faster than the hardware! - and also guides the developer as to what the performance bottlenecks might be and thus which optimisations might be usefully applied.
+
+To begin with, one needs to measure the performance-critical kernels in the application to determine their floating-point throughput (the higher the better) and \textit{arithmetic intensity}.
+Arithmetic intensity is a ratio of the number of \glspl{flop} performed per byte of memory accessed and it indicates whether or not a kernel is likely to be \textit{memory-bound}, where maximum throughput is limited by memory access speeds, or \textit{compute-bound}, where it is limited by the speed of the chip itself.
+In general, operations such as square roots and divisions typically require a large number of \glspl{flop}, yielding a high arithmetic intensity, while simple streaming access to an array (e.g. \clang{z[i] = x[i] + y[i]}) read a large amount of data compared to the number of \glspl{flop} performed and have a correspondingly low arithmetic intensity.
+
+Having recorded the floating-point throughput and arithmetic intensity, the kernels can now be added to a roofline plot.
+An example plot is shown in Figure~\ref{fig:roofline}.
+To the left of the plot, where arithmetic intensity is low, throughput is dependent upon the rate at which data can be supplied to the chip and so the ceilings are given by the bandwidths of the various levels in the memory hierarchy.
+By contrast, to the right the arithmetic intensity is high and so the performance limits are prescribed by the peak floating-point throughput of the chip.
+Two lines are shown to demonstrate the fact that vectorisation can increase performance over standard scalar operations.
+
+Looking at the example kernels shown in red in the figure, we can demonstrate the utility of roofline plots in the optimisation effort:
 
 \begin{itemize}
   \item
-    Kernel \textit{A} has low \gls{ai} and so the maximum achievable throughput is unfortunately well below theoretical peak.
-    It lies fairly close to the peak if streaming data from main memory and so possible optimisations include:
-    Reducing the working-set size to fit within cache memory - for example via tiling - making the new bottleneck the cost of streaming data from the cache rather than main memory.
-    Reducing the volume of data that needs to be streamed; this would increase the \gls{ai}.
+    Kernel \textit{A} has low arithmetic intensity and so the maximum achievable throughput is well below theoretical peak.
+    It lies fairly close to the main memory bandwidth ceiling and so fruitful optimisation efforts could include: modifying the data access patterns to better utilise cache memory, or making algorithmic modifications to increase the arithmetic intensity.
 
   \item
-    Kernel \textit{B} has high \gls{ai} and so should be able to achieve close to peak performance.
-    However, it currently sits well below the theoretical limits and is therefore an excellent candidate for further optimisation.
+    Kernel \textit{B} has high arithmetic and so should be able to achieve close to peak performance.
+    It currently sits well below the theoretical limits and is therefore an excellent candidate for further optimisation.
     Since the code cannot be memory-bound, optimisation efforts should focus on compute-type optimisations such as loop unrolling, rather than data ones.
 
   \item
@@ -296,27 +265,35 @@ To use the example points (shown in red):
     It is not a good candidate for optimisation since the potential for performance improvements is low.
 \end{itemize}
 
-\subsection{Optimisations for stencil computations}
-\label{sec:background_opt}
-
-Depending on the local kernel, stencil application can be either compute- or memory-bound.
-If the kernel has high \gls{ai}, then the iteration will be compute-bound and throughput-oriented optimisations will be worthwhile.
-By contrast, if the kernel has low \gls{ai}, then it will be memory-bound and data movement optimisations will be the ones to yield results.
-The key thing to observe is that, if compute-bound, the local stencil is doing a lot of work and hence all of the `hot loops' that drive performance will be found inside it.
-On the other hand, if we are memory-bound, then most of the time will be spent inside the packing and unpacking code of the stencil language.
+Within the context of stencil computations, the key observation that can be made regarding the classification of kernels into being either compute- or memory-bound is that, in the main, only memory-bound optimisations are worthwhile pursuing.
+This is because, if compute-bound, the vast majority of the code runtime will be spent inside the stencil computation, and hence all of the `hot loops' that impact performance will be found inside it.
+On the other hand, if we are memory-bound, then most of the time will be spent inside the packing and unpacking code of the stencil library and there are genuine opportunities for optimisation.
 Therefore, in general, optimisations for stencil languages should focus on improving memory accesses.
 
-We remark briefly that one notable exception to this is vectorisation.
-One may wish to apply \textit{inter-element} vectorisation at the level of the stencil language, that is, to loop over multiple entities in the iteration set (e.g. cells) at the same time, one per vector lane.
+We remark briefly that notable exceptions to this rule are inter-element vectorisation and GPU offloading.
+In both cases this would be implemented in a stencil library by, instead of looping over the iteration set one at a time, looping over multiple entities simulatenously, one per vector lane/GPU thread.
+This can improve the performance of compute-bound codes by allowing the chip to execute multiple operations per clock cycle.
+
+In the case of inter-element vectorisation, in Figure~\ref{fig:roofline} this would correspond to shifting the kernel from under the ``Peak scalar throughput" ceiling to the ``Peak vector throughput" one.
 Such an approach has been implemented in (a branch of) \pyop2, and demonstrated to be performant~\cite{sunStudyVectorizationMatrixfree2020}.
+Similarly, some preliminary work on adding GPU offloading support to \pyop2 is ongoing~\cite{fenics2021-kulkarni}.
+
+\subsection{Optimisations for stencil computations}
+\label{sec:background_opt}
 
 \subsubsection{Locality optimisations}
 \label{sec:background_opt_locality}
 
-From the roofline in Figure~\ref{fig:roofline} one can see that, for a memory-bound code (low \gls{ai}), dramatic speedups may be achieved by changing the level in the memory hierarchy at which the kernel operates.
+From the roofline in Figure~\ref{fig:roofline} one can see that, for a memory-bound code (low arithmetic intensity), dramatic speedups may be achieved by changing the level in the memory hierarchy at which the kernel operates.
 In this simplified figure this corresponds to being limited by ``Peak cache bandwidth'' instead of ``Peak main memory bandwidth''.
-In practice there are several layers of cache and this represents a simplified picture.
-Cache levels have a small capacity, and so in order to exploit the faster data accesses the working-set size of the problem must be reduced to fit inside a particular cache level.
+In reality chips have multiple layers of cache memory with different capacities and performance characteristics.
+
+Cache levels have a small capacity, and so in order to exploit the faster data accesses the \textit{working-set size} of the problem must be reduced to fit inside a particular cache level.
+The working-set size describes the amount of data that must be on hand to perform a computation.
+If this data volume exceeds the capacity of a cache level then memory performance will be driven by the cost of retrieving data from the next-fastest memory level.
+Memory access speeds can differ by an order of magnitude between levels and so the working-set size is a primary consideration for memory-bound applications.
+
+% here
 
 Whenever a piece of data is loaded into the cache, the hardware attempts to take advantage of the \textit{spatial locality} of the data and loads in adjacent entries as a \textit{cache line}, under the assumption that these will be required in subsequent computations.
 The hardware also makes the reasonable assumption of \textit{temporal locality}, that data loaded into the cache may be used multiple times, and so cache lines persist and only the least recently used is evicted and replaced.
@@ -364,11 +341,12 @@ The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstr
     \tkzDefShiftPoint[v3v0](90:3){v3v3}
 
     % base
-    \tkzDrawSegments[red!80,densely dashed,line width=1](v0v0,v2v0 v1v0,v2v0 v2v0,v3v0)
+    \tkzDrawSegments[red!80,dashed,line width=1](v0v0,v2v0 v1v0,v2v0 v2v0,v3v0)
 
     % draw the vertical lines (v2 is invisible)
     \tkzDrawSegments[line width=1](v0v0,v0v1 v0v1,v0v2 v0v2,v0v3)
     \tkzDrawSegments[line width=1](v1v0,v1v1 v1v1,v1v2 v1v2,v1v3)
+    \tkzDrawSegments[dashed,line width=1](v2v0,v2v1 v2v1,v2v2 v2v2,v2v3)
     \tkzDrawSegments[line width=1](v3v0,v3v1 v3v1,v3v2 v3v2,v3v3)
 
     % horizontal (bottom is red)
@@ -377,14 +355,16 @@ The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstr
     \tkzDrawSegments[line width=1](v0v2,v1v2 v1v2,v3v2)
     \tkzDrawSegments[line width=1](v0v3,v1v3 v1v3,v3v3)
 
-    % top
+    \tkzDrawSegments[dashed,line width=1](v0v1,v2v1 v1v1,v2v1 v2v1,v3v1)
+    \tkzDrawSegments[dashed,line width=1](v0v2,v2v2 v1v2,v2v2 v2v2,v3v2)
+
     \tkzDrawSegments[line width=1](v0v3,v2v3 v2v3,v3v3)
     \tkzDrawSegment[line width=1](v1v3,v2v3)
 
-    \tkzDrawPoints[red!80](v0v0,v1v0,v2v0,v3v0)
-    \tkzDrawPoints(v0v1,v0v2,v0v3,v1v1,v1v2,v1v3,v2v3,v3v1,v3v2,v3v3)
+    \tkzDrawPoints[red!80,size=4pt](v0v0,v1v0,v2v0,v3v0)
+    \tkzDrawPoints[size=4pt](v0v1,v0v2,v0v3,v1v1,v1v2,v1v3,v2v1,v2v2,v2v3,v3v1,v3v2,v3v3)
   \end{tikzpicture}
-  \caption{}
+  \caption{A sample extruded mesh formed by uniformly extruding a base mesh of two triangles (highlighted in red).}
   \label{fig:extruded}
 \end{figure}
 

@@ -11,7 +11,6 @@
   \newacronym{pde}{PDE}{partial differential equation}
   \newacronym[shortplural={FLOPs},longplural={floating-point operations}]
     {flop}{FLOP}{floating-point operation}
-  \newacronym{ai}{AI}{arithmetic intensity}
   \newacronym{dag}{DAG}{directed acyclic graph}
   \newacronym{poset}{poset}{partially-ordered set}
   \newacronym{rcm}{RCM}{reverse Cuthill-McKee}
@@ -37,17 +36,16 @@
   \def\drawpolygon#1,#2;{
     \begin{pgfonlayer}{background}
         \filldraw[line width=28,join=round](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
-        \filldraw[line width=27,join=round,white](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
+        \filldraw[line width=27,join=round,blue!10](#1.center)foreach\A in{#2}{--(\A.center)}--cycle;
     \end{pgfonlayer}
   }
 
 % macros
-\newcommand{\projectname}{\texttt{pyop3}}
 % hacky way to get \pyop2 and \pyop3 as valid macros
 % source: https://tex.stackexchange.com/questions/13290/how-to-define-macros-with-numbers-in-them
 \def\pyop#1{\ifnum#1=2 {PyOP2}\else \ifnum#1=3 {\texttt{pyop3}}\fi \fi}
 \newcommand{\basichasse}{%
-  \begin{scope}[auto,every node/.style={circle,minimum size=20pt,draw,color=black}]
+  \begin{scope}[auto,every node/.style={circle,minimum size=20pt,draw,color=black,fill=white}]
     \begin{scope}[yshift=0cm]
       \node (1) [xshift={1*\textwidth/3}] {1};
       \node (2) [xshift={2*\textwidth/3}] {2};
@@ -98,7 +96,7 @@
 \newcommand{\hcurl}{$H(\mathrm{curl})$}
 
 % title
-\title{High Performance Mesh Abstractions}
+\title{Software Abstractions for High Performance Mesh-based Simulations}
 \author{Connor Ward}
 \date{\today}
 
