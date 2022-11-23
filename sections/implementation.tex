@@ -12,8 +12,8 @@
 
     \node (loop) [input] at (0,0) {Input loop\\expression};
     \node (loopy) [node,at={(loop.east)},xshift=.7cm] {Generate\\loopy kernel};
-    \node (c) [node,at={(loopy.east)},xshift=.7cm] {Generate\\source code};
-    \node (exe) [node,at={(c.east)},xshift=.7cm] {Compile\\executable};
+    \node (c) [node,at={(loopy.east)},xshift=.7cm] {Generate\\C code};
+    \node (exe) [node,at={(c.east)},xshift=.7cm] {Compile\\binary};
     \node (do) [node,at={(exe.east)},xshift=.7cm] {Execute};
 
     \draw [-{stealth}] (loop) -- (loopy);
@@ -54,38 +54,94 @@ void do_loop(int ncells, double *dat0, double *dat1, int *map0) {
   \label{lst:basicloop}
 \end{listing}
 
-As discussed in Section~\ref{sec:stencillang}, existing stencil languages may be classified according to whether or not they are aware of the mesh topology.
+As discussed in Section~\ref{sec:stencillang}, existing stencil libraries may be classified according to whether or not they are aware of the mesh topology.
 A library that is not `mesh-aware', for example \pyop2, can be more challenging to program in because responsibility for reasoning about the topology, including orientations, is passed to the user who has to construct the appropriate indirection maps to represent their mesh.
-By contrast, a `mesh-aware' library does not have these problems but it has to use its own custom mesh implementation.
-This increases the burden on the maintainers of the software and the mesh implementations will, without substantial development effort, suffer from both lack of features (e.g. I/O, parallel decomposition, adaptive refinement) and poor interoperability with other packages.
+Composition of indirection maps is also difficult because of the loss of topological information.
+Such difficulties can be avoided with a mesh-aware stencil library, but (usually) at the expense of relying upon a custom mesh abstraction implementation.
+Writing mesh codes by hand is a non-trivial task requiring a significant amount of developer effort to maintain and introduce new features.
+An in-house implementation will also never be able to compete with the feature set of a more general purpose mesh library (e.g. I/O, parallel decomposition, adaptive refinement) and will also suffer from poor interoperability with other packages.
 
-In this work we attempt to bridge this gap by writing a new stencil language, \pyop3, that combines the advantages provided by `mesh-aware' frameworks with a mature, external mesh implementation (DMPlex).
+In this work we attempt to bridge the gap between mesh-aware and mesh-oblivious stencil libraries by writing a new stencil library, \pyop3, that combines the advantages provided by mesh-aware frameworks with DMPlex, a mature, external mesh implementation (Section~\ref{sec:background_mesh_dmplex}).
+
 \pyop3 is, somewhat obviously, heavily inspired by and based upon \pyop2, and hence much of its design represents either an incremental improvement on \pyop2, or is in fact directly lifted from it.
+This report will make clear what parts of the design of \pyop3 are novel contributions and which are derived from \pyop2.
 
-In \pyop3, users declare the iterations to be performed, the local operations to apply, and the stencil patterns for each data structure in a manner that is close to the mathematics/pseudocode.
-As an example, the syntax for a typical \gls{fem} residual assembly, where one loops over cells and computes using data in the cell's closure, would look something like:
+\subsection{Interface}
+\label{sec:impl_interface}
 
+\pyop3 is implemented as a \gls{dsl} embedded in Python.
+As part of a larger script users create \textit{loop expressions}, prescribing the loops, local computations and stencil data access patterns in a manner resembling the algorithm's pseudocode.
+These loop expressions are then parsed, compiled and executed by the \pyop3 backend.
+
+To give an example, the syntax for a typical \gls{fem} residual assembly, where one loops over cells and computes using data in the cell's closure, would look something like:
+
+\begin{minipage}{\textwidth}
 \begin{minted}[xleftmargin=4em]{python}
 do_loop(
   c := mesh.cells.index,
   kernel(dat0[closure(c)], dat1[closure(c)])
 )
 \end{minted}
+\end{minipage}
 
-The function \py{do_loop} declares and then executes a \textit{loop expression}.
-A loop expression consists of an iteration set, here \py{mesh.cells}, and a sequence of instructions to execute, here simply the single function call to \py{kernel}.
-\py{kernel} is an externally provided loopy kernel augmented with \textit{access descriptors} (\py{READ}, \py{WRITE}, \py{RW}, \py{INC}, \py{MIN} or \py{MAX}) that allows \pyop3 to emit the correct packing/unpacking code.
-The \py{datN} objects are \pyop3 \py{Dats}, vectors storing \glspl{dof} across mesh points.
-\pyop3 shares the same fundamental data structures as \pyop2: \py{Globals}, values shared across all processors; \py{Dats}, vectors storing data associated with mesh points; and \py{Mats}, (sparse) matrices representing interactions between mesh points.
-Lastly, the \py{datN[closure(c)]} instructions indicate that \py{kernel} expects two arguments, each a contiguous array representing the \glspl{dof} associated with the closure of the given cell.
+Here the function \py{do_loop} declares and then executes the loop expression.
+All loop expressions consist of:
+1) an iteration set, here \py{mesh.cells}, and
+2) a sequence of instructions to execute, here simply the single local kernel \py{kernel}.
+\py{kernel} has type \py{LocalKernel} and consists of a \textit{loopy kernel} (Section~\ref{sec:impl_interface_codegen}) augmented with \textit{access descriptors} for each of its arguments.
+Possible access descriptors are \py{READ}, \py{WRITE}, \py{RW}, \py{INC}, \py{MIN} and \py{MAX} and they are required to ensure that \pyop3 generates the right packing/unpacking code.
+An example for a kernel with access descriptors \py{READ} and \py{INC} is shown in Listing~\ref{lst:basicloop}.
+Lastly, the \py{dat{0,1}[closure(c)]} instructions indicate that \py{kernel} should be passed two contiguous arrays, each containing the \glspl{dof} associated with the closure of the current cell.
+This last part is where the difference between the mesh-oblivious \pyop2 and the mesh-aware \pyop3 is stark.
+In \pyop2 these closure maps would need to be computed in advance and passed in to the loop expression whereas \pyop3, being mesh-aware, is capable of reasoning about the mesh and automatically computing the right indirection maps.
 
-Note that in this example, by using \py{do_loop}, we declare the loop expression and then \textit{immediately} execute it.
-It is frequently desirable, for reasons of efficiency, to have a \textit{persistent} loop expression which one can create by running \py{expr = loop(...)}.
+Note that in this example, by using \py{do_loop}, we declare the loop expression and then \textit{immediately execute it}.
+This is not always desired behaviour as, if the same loop expression is executed multiple times, one may want to have a \textit{persistent} loop expression to avoid some overhead.
+Such expressions can easily be created by calling \py{expr = loop(...)}, and then executed with Python call syntax: \py{expr(*args, **kwargs)}.
 This is discussed in more detail in Section~\ref{sec:impl_overhead}.
 
-To execute such an expression, it is lowered through a sequence of intermediate representations before being finally compiled to a binary and run (Figure~\ref{fig:codegenproc}).
-In particular, the main role of \pyop3 is the lowering of the input loop expression to a loopy kernel which is then lowered to C.
-To illustrate this using the example above, if we assume the access descriptors for \py{kernel} are \py{READ} and \py{INC}, then we would generate C code resembling that shown in Listing~\ref{lst:basicloop}.
+\subsubsection{Code generation}
+\label{sec:impl_interface_codegen}
+
+Having declared a loop expression, \pyop3 executes it by first lowering the expression through a sequence of intermediate representations, compiling to a binary, then running the code.
+
+The target intermediate representation of \pyop3 is loopy~\cite{klocknerLooPyTransformationbased2014}, a polyhedral model inspired Python code generation library capable of generating code for multiple backends including CPUs and GPUs.
+With loopy, the main entry point is, not dissimilarly to \pyop3, the declaration of a \py{LoopKernel} via the command \py{loopy.make_kernel}.
+Once a \py{LoopKernel} has been created, loopy also provides a wealth of different code transformations such as loop tiling, vectorisation and loop-invariant code motion.
+
+To construct such a kernel, the user needs to specify \textit{domains}, effectively loop extents, \textit{instructions} (e.g. \clang{x[i] += y[i]}) and \textit{arguments} representing kernel inputs.
+For example, a simple loopy kernel could be created as follows:
+
+\vspace{1em}
+\begin{minipage}{\textwidth}
+\begin{minted}[xleftmargin=2em]{python}
+knl = loopy.make_kernel(
+  "{ [i]: 0 <= i < n }",  # domains
+  "y[i] = 2*x[i]",        # instructions
+  [                       # arguments
+    loopy.GlobalArg("x"),
+    loopy.GlobalArg("y"),
+    loopy.ValueArg("n"),
+  ],
+)
+\end{minted}
+\end{minipage}
+\vspace{1em}
+
+The role of \pyop3 in lowering to such a representation is therefore to determine the correct number and size of the iteration domains, and resolving the complex data access patterns required for multi-dimensional mesh data in order to emit the correct instructions.
+
+Once \pyop3 has generated an appropriate loopy kernel, loopy is called upon to generate code in a low-level device-specific language (e.g. C for CPUs).
+This code is then compiled by \pyop3 and executed.
+A high-level overview of the code generation pathway is shown in Figure~\ref{fig:codegenproc} and an example of the sort of C code that would be emitted is shown in Listing~\ref{lst:basicloop}.
+
+\subsubsection{Data types}
+
+Just like \pyop2, \pyop3 has three main data types:
+\py{Globals}, values shared across all processors;
+\py{Dats}, vectors storing data associated with mesh points;
+and \py{Mats}, matrices (usually sparse) representing interactions between mesh points.
+
+The distribution of these parallel objects is discussed in Section~\ref{sec:impl_parallel}.
 
 \subsection{A new abstraction for mesh data layouts}
 \label{sec:impl_datalayout}

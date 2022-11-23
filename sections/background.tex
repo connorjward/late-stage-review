@@ -73,6 +73,7 @@ Importantly, this abstraction does not contain any concept of the underlying mes
 % Liszt, Simit - notably associates data information with topological entities
 
 \subsection{Mesh representations}
+\label{sec:background_mesh}
 
 \begin{figure}
   \centering
@@ -166,6 +167,9 @@ In software, a mesh is typically represented by a collection of sets of entities
 Possible abstractions capturing this behaviour include databases (ebb, moab) or hypergraphs (simit).
 In this work we focus on DMPlex, the unstructured mesh abstraction used in PETSc.
 In contrast with Ebb, Simit or Liszt, DMPlex is a more general purpose mesh abstraction and so has a more substantial feature set.
+
+\subsubsection{DMPlex}
+\label{sec:background_mesh_dmplex}
 
 % parallel partioning, adaptation, I/O, AMR...
 
@@ -434,7 +438,6 @@ Though we do address adding support for partially-structured meshes in Section~\
 \subsection{Orienting degrees-of-freedom}
 \label{sec:background_orientation}
 
-% FIXME: Use BDM for vec-valued (H(div) conforming and P3 for scalar-valued
 \begin{figure}
   % macros
   \newcommand{\trianglestyles}{%
@@ -621,19 +624,26 @@ Though we do address adding support for partially-structured meshes in Section~\
     \label{fig:orient_vector_flip}
   \end{subfigure}
 
-  \caption{The effect of edge flips on both scalar- and vector-valued finite elements on triangles.}
+  \caption{
+    The effect of edge flips on both scalar- and vector-valued finite elements on triangles.
+    Cell, edge and vertex \glspl{dof} are shown in blue, red and yellow respectively.
+  }
   \label{fig:orient}
 \end{figure}
 
-When writing the local stencil computation to be performed at each iteration, the process is considerably simplified by assuming that the data being passed in from the iteration engine (here \pyop3) is in some canonical ordering.
+When writing the local kernel for a stencil computation, the process is considerably simplified by assuming that the data being passed in from the iteration engine (here \pyop3) is in some canonical ordering.
 Unfortunately, guaranteeing such an ordering a priori is often difficult as entities in the stencil may have different relative orientations.
-To give an example, with an arbitrary global numbering of vertices, it is possible for a triangle mesh to contain triangles with `flipped' edges (Figure~\ref{fig:orient}).
-As a consequence, the stencil data passed to the local kernel will be out-of-order and the resulting computation will be wrong.
+To give an example, with an arbitrary global numbering of vertices, it is possible for a mesh to contain cells with `flipped' edges relative to their canonical orientation.
+If multiple \glspl{dof} are stored along the edge then this will result in reading them in the wrong order, breaking the code.
+An example of this for triangles is shown in Figure~\ref{fig:orient}.
+Figure~\ref{fig:orient_basic_ref} shows the canonical ordering for a degree 3 Lagrange finite element.
+Note how flipping an edge (Figure~\ref{fig:orient_basic_flip}) results in a permutation of the stencil \glspl{dof}.
 
-The situation is further complicated when the \glspl{dof} stored at each node are vector-valued, for example with \hdiv and \hcurl conforming elements in the \gls{fem}.
-With vector \glspl{dof} it can happen that, as well as possibly being out-of-order, the loaded vectors can `point' in the wrong direction, requiring the application of some transformation to achieve a canonical representation.
-For example, in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} one can see that the effect of `flipping' an edge inverts the direction of the vector \glspl{dof} so the loaded data must be multiplied by -1.
-For vector-valued \glspl{dof} on facets in 3D things get even more difficult because the \glspl{dof} can be defined relative to the two tangent vectors on the facet and so $2\times2$ matrix rotations may be required.
+The situation is further complicated when the \glspl{dof} stored at each node are vector-valued, for example with \hdiv and \hcurl conforming elements in \gls{fem}.
+With vector \glspl{dof} it can happen that, as well as possibly being out of order, the loaded vectors can `point' in the wrong direction, requiring the application of some transformation to achieve a canonical representation.
+For example, in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} one can see that the effect of flipping an edge inverts the direction of the vector \glspl{dof}, so they must be multiplied by -1 to return to canonical.
+Things get even more difficult in 3D because vector-valued \glspl{dof} on facets can be defined relative to the two tangent vectors of the face.
+The transformation back to canonical therefore can require rotations (via $2\times2$ matrices) as well as flips.
 
 \subsubsection{A partial solution: Mesh renumbering}
 
@@ -642,21 +652,21 @@ In particular this has been shown to work for simplices~\cite{rognesEfficientAss
 It is also possible to number unstructured hexahedral meshes in this manner, but the algorithm cannot be performed in parallel and it will not work for all possible meshes~\cite{agelekOrientingEdgesUnstructured2017}.
 In particular, if a subset of the mesh forms a Möbius strip then it is not orientable.
 
-Furthermore, a renumbering strategy is not known for more exotic cell types like pyramids and it also prohibits any \textit{mixed mesh} methods, where the mesh contains more than one cell type.
+The mesh renumbering approach is also unsuitable for other cell types (e.g. pyramids) or \textit{mixed mesh} methods.
 
 It is clear that a renumbering strategy is not a sufficiently general solution to the orientation problem.
 Therefore the stencil library abstraction needs to permit for different orientations.
 
 \subsubsection{The next step: Permuting scalar \glspl{dof}}
 
-As shown in Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_basic_flip}, loading scalar data for cells with `flipped' edges will result in the data being packed in the wrong order.
+As shown in Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_basic_flip}, loading scalar data for cells with flipped edges will result in the data being packed in the wrong order.
 To avoid this, the \glspl{dof} need to be \textit{permuted} prior to packing.
-This permutation can actually be precomputed and tabulated and handled by the input indirection map.
+This permutation can actually be precomputed and form part of the indirection maps used to address the stencils.
 
 \subsubsection{All the way there: Transforming vector \glspl{dof}}
 
 The above approach works for all scalar-valued function spaces, but is insufficient for vector-valued ones due to the need for transformations of the \gls{dof} values themselves.
 For example, as described above, the flip shown in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} mean that the \glspl{dof} need to be scaled by -1 prior to packing.
 It is not possible to store non-permutation transformations inside an indirection map and so the stencil application needs to implement a separate stage to resolve these orientation transformations.
-This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{}.
-However, to our knowledge, this is not performed by any existing stencil library.
+This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{loggAutomatedSolutionDifferential2012,AlnaesBlechta2015a}.
+However, to our knowledge, this is not performed by any existing general purpose stencil library.
