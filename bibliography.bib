@@ -859,6 +859,17 @@
   file = {/home/connor/.local/share/zotero/storage/ISGALFZJ/Dalcin et al. - 2011 - Parallel distributed computing using Python.pdf}
 }
 
+@article{darteComplexityLoopFusion2000,
+  title = {On the Complexity of Loop Fusion},
+  author = {Darte, Alain},
+  date = {2000},
+  journaltitle = {Parallel Computing},
+  pages = {19},
+  abstract = {Loop fusion is a program transformation that combines several loops into one. It is used in parallelizing compilers mainly for increasing the granularity of loops and for improving data reuse. The goal of this paper is to study, from a theoretical point of view, several variants of the loop fusion problem ± identifying polynomially solvable cases and NP-complete cases ± and to make the link between these problems and some scheduling problems that arise from completely dierent areas. We study, among others, the fusion of loops of dierent types, and the fusion of loops when combined with loop shifting. Ó 2000 Elsevier Science B.V. All rights reserved.},
+  langid = {english},
+  file = {/home/connor/.local/share/zotero/storage/ZUI9WUC2/Darte - 2000 - On the complexity of loop fusion.pdf}
+}
+
 @inproceedings{deakinPerformancePortabilityDiverse2019,
   title = {Performance {{Portability}} across {{Diverse Computer Architectures}}},
   booktitle = {2019 {{IEEE}}/{{ACM International Workshop}} on {{Performance}}, {{Portability}} and {{Productivity}} in {{HPC}} ({{P3HPC}})},
@@ -1592,6 +1603,15 @@
   abstract = {3D visual computing data are often spatially sparse. To exploit such sparsity, people have developed hierarchical sparse data structures, such as multi-level sparse voxel grids, particles, and 3D hash tables. However, developing and using these high-performance sparse data structures is challenging, due to their intrinsic complexity and overhead. We propose               Taichi               , a new data-oriented programming language for efficiently authoring, accessing, and maintaining such data structures. The language offers a high-level, data structure-agnostic interface for writing computation code. The user independently specifies the data structure. We provide several elementary components with different sparsity properties that can be arbitrarily composed to create a wide range of multi-level sparse data structures. This               decoupling               of data structures from computation makes it easy to experiment with different data structures without changing computation code, and allows users to write computation as if they are working with a dense array. Our compiler then uses the semantics of the data structure and index analysis to automatically optimize for locality, remove redundant operations for coherent accesses, maintain sparsity and memory allocations, and generate efficient parallel and vectorized instructions for CPUs and GPUs.                                         Our approach yields competitive performance on common computational kernels such as stencil applications, neighbor lookups, and particle scattering. We demonstrate our language by implementing simulation, rendering, and vision tasks including a material point method simulation, finite element analysis, a multigrid Poisson solver for pressure projection, volumetric path tracing, and 3D convolution on sparse grids. Our computation-data structure decoupling allows us to quickly experiment with different data arrangements, and to develop high-performance data structures tailored for specific computational tasks. With               1               {$<$}u{$>$}               1               {$<$}/u{$>$}               0               th as many lines of code, we achieve 4.55× higher performance on average, compared to hand-optimized reference implementations.},
   langid = {english},
   file = {/home/connor/.local/share/zotero/storage/572WXSJF/Hu et al. - 2019 - Taichi a language for high-performance computatio.pdf}
+}
+
+@inproceedings{irigoinSupernodePartitioning1988,
+  title = {Supernode Partitioning},
+  booktitle = {Proceedings of the 15th {{ACM SIGPLAN-SIGACT}} Symposium on {{Principles}} of Programming Languages},
+  author = {Irigoin, François and Triolet, Rémi},
+  date = {1988},
+  pages = {319--329},
+  file = {/home/connor/.local/share/zotero/storage/EQYBPR7G/73560.73588.pdf}
 }
 
 @unpublished{isaacSupportNonconformalMeshes2015,
@@ -2867,6 +2887,23 @@
   abstract = {Image processing pipelines combine the challenges of stencil computations and stream programs. They are composed of large graphs of different stencil stages, as well as complex reductions, and stages with global or data-dependent access patterns. Because of their complex structure, the performance difference between a naive implementation of a pipeline and an optimized one is often an order of magnitude. Efficient implementations require optimization of both parallelism and locality, but due to the nature of stencils, there is a fundamental tension between parallelism, locality, and introducing redundant recomputation of shared values.},
   langid = {english},
   file = {/home/connor/.local/share/zotero/storage/8ZLKIVN7/Ragan-Kelley et al. - Halide A Language and Compiler for Optimizing Par.pdf}
+}
+
+@article{ramanujamTilingMultidimensionalIteration1992,
+  title = {Tiling Multidimensional Iteration Spaces for Multicomputers},
+  author = {Ramanujam, J. and Sadayappan, P.},
+  date = {1992-10},
+  journaltitle = {Journal of Parallel and Distributed Computing},
+  shortjournal = {Journal of Parallel and Distributed Computing},
+  volume = {16},
+  number = {2},
+  pages = {108--120},
+  issn = {07437315},
+  doi = {10.1016/0743-7315(92)90027-K},
+  url = {https://linkinghub.elsevier.com/retrieve/pii/074373159290027K},
+  urldate = {2022-11-24},
+  langid = {english},
+  file = {/home/connor/.local/share/zotero/storage/PCBM8X9H/Ramanujam and Sadayappan - 1992 - Tiling multidimensional iteration spaces for multi.pdf}
 }
 
 @article{rathgeberFiredrakeAutomatingFinite2016,

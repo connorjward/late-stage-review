@@ -289,33 +289,32 @@ Similarly, some preliminary work on adding GPU offloading support to \pyop2 is o
 \label{sec:background_opt_locality}
 
 From the roofline in Figure~\ref{fig:roofline} one can see that, for a memory-bound code (low arithmetic intensity), dramatic speedups may be achieved by changing the level in the memory hierarchy at which the kernel operates.
-In this simplified figure this corresponds to being limited by ``Peak cache bandwidth'' instead of ``Peak main memory bandwidth''.
-In reality chips have multiple layers of cache memory with different capacities and performance characteristics.
+In this simplified figure this corresponds to being limited by ``Peak cache bandwidth'' instead of ``Peak main memory bandwidth'' (in reality chips have multiple layers of cache memory with different capacities and performance characteristics).
 
 Cache levels have a small capacity, and so in order to exploit the faster data accesses the \textit{working-set size} of the problem must be reduced to fit inside a particular cache level.
 The working-set size describes the amount of data that must be on hand to perform a computation.
-If this data volume exceeds the capacity of a cache level then memory performance will be driven by the cost of retrieving data from the next-fastest memory level.
+If this data volume exceeds the capacity of a cache level then memory performance will be driven by the cost of retrieving data from the next-fastest, next-smallest level of the memory hierarchy.
 Memory access speeds can differ by an order of magnitude between levels and so the working-set size is a primary consideration for memory-bound applications.
+One of the key ways to reduce the working-set size is to maximise \textit{data locality}.
 
-% here
+% I don't like this bit at all...
+To try and minimise the number of accesses made to main memory, caches assume that application data exhibit both \textit{spatial locality} and \textit{temporal locality}.
+Spatial locality refers to the fact that if a particular piece of data is used by the application, then it is likely that neighbouring data will also be needed.
+Caches therefore load data in contiguous chunks termed \textit{cache lines} so data adjacent to the target also get loaded into the cache.
+Temporal locality in caches is the assumption that loaded data may be needed multiple times.
+To exploit this, cache lines persist in the cache until eviction by new data.
 
-Whenever a piece of data is loaded into the cache, the hardware attempts to take advantage of the \textit{spatial locality} of the data and loads in adjacent entries as a \textit{cache line}, under the assumption that these will be required in subsequent computations.
-The hardware also makes the reasonable assumption of \textit{temporal locality}, that data loaded into the cache may be used multiple times, and so cache lines persist and only the least recently used is evicted and replaced.
+To optimise performance, one must make \textit{data locality} optimisations, that is, optimisations that ensure greater utilisation of the additional entries loaded per cache line as well as trying to avoid repeated loads of the same data if repeated accesses are required.
 
-To demonstrate the impact of these hardware optimisations, consider an example where the data layout is so poor that only one entry from each cache line is ever used and where data is never reused.
-A cache line is typically 64 bytes so for double precision floats (8 bytes) this increases the \textit{effective working-set size} by a factor of 8.
-This difference can cause us to exceed the working-set restrictions for a particular cache level and restrict the effective memory bandwidth to the lower level in the memory hierarchy, a difference that frequently incurs an order-of-magnitude hit to performance.
-
-To avoid this, one must make \textit{data locality} optimisations, that is, optimisations that ensure greater utilisation of the additional entries loaded per cache line as well as trying to avoid repeated loads of the same data if repeated accesses are required.
-
-Common data locality optimisations for stencil-like applications include: \textit{tiling}, where the iteration domain is subdivided into small \textit{tiles} to exploit data reuse between the faces of stencils; and \textit{kernel fusion}, where separate stencils are executed in a single loop to take advantage of the data shared between them.  % TODO: Add citations
-\textit{Time tiling} is a combination of the two and has been shown to lead to moderate improvements in performance for unstructured mesh stencils~\cite{luporiniAutomatedTilingUnstructured2019}.
+Common data locality optimisations for stencil-like applications include \textit{tiling}, where a multi-dimensional iteration domain is subdivided into small \textit{tiles} to exploit data reuse between the stencils~\cite{irigoinSupernodePartitioning1988,ramanujamTilingMultidimensionalIteration1992}, and \textit{kernel fusion}, where separate stencils are executed in a single loop to take advantage of the data shared between them~\cite{darteComplexityLoopFusion2000}.
+\textit{Time tiling} is a combination of the two where the iteration domain is tiled and then multiple stencils are applied in turn over each tile~\cite{luporiniAutomatedTilingUnstructured2019}..
+In the same way as kernel fusion this aims to exploit temporal locality by reusing data between the stencils.
 
 For unstructured meshes, a common optimisation is to renumber the mesh entities such that all entities in the stencil are `close', hence making use of spatial locality.
 It also helps with temporal locality since \glspl{dof} on faces will be reused between iterations.
 The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstructured mesh~\cite{cuthillReducingBandwidthSparse1969,langeEfficientMeshManagement2016}.
 
-\subsubsection{Mesh structure}
+\subsubsection{Exploiting mesh structure}
 \label{sec:background_structure}
 
 \begin{figure}
@@ -372,16 +371,13 @@ The \gls{rcm} algorithm is a common `cache-oblivious' way of reordering an unstr
   \label{fig:extruded}
 \end{figure}
 
-
-As well as reordering data to reduce the effective working-set size, one can sometimes exploit the structure of the mesh itself to reduce the \textit{actual} working-set size.
+As well as reordering data to reduce the \textit{effective} working-set size, one can sometimes exploit the structure of the mesh itself to reduce the actual working-set size by reducing the volume of data needed per computation.
 
 Meshes can (usually) be classified into one of two types: \textit{structured} or \textit{unstructured}.
-The fundamental difference between the two is that structured grids can determine their neighbouring entities (i.e. perform the queries from Figure~\ref{fig:plex_restrictions}) via mathematical relations.
-This means that data accesses have the form \mintinline{c}{x[f(i)]}.
-By contrast, unstructured meshes have no structure they can exploit to determine their neighbours and hence need to tabulate these adjacency relations, resulting in accesses of the form \mintinline{c}{x[map[i]]}.
+The fundamental difference between the two is that structured grids can determine their neighbouring entities without needing to tabulate everything individually.
+This means that data accesses have the form \clang{x[f(i)]} instead of something like \clang{x[map[i]]} that is required for unstructured meshes.
 
-Structured meshes are known to have faster access to data than unstructured meshes.
-This is for the following reasons:
+Structured meshes are known to have faster access to data than unstructured meshes for the following reasons:
 
 \begin{itemize}
   \item
@@ -392,12 +388,12 @@ This is for the following reasons:
   \item
     \textit{Less memory is required per data access} \\
     Since lookup tables are not required for locating data, the total volume of data required from main memory is reduced.
+    This reduces the working-set size of the problem.
 
   \item
     \textit{Smaller working-set size} \\
     We need less data in order to compute a single stencil.
     If this volume exceeds the size of a particular level in the cache hierarchy then the next one down needs to get used and this will have a bandwidth that is orders-of-magnitude slower.
-    Note that this is unlikely to be much of a problem.
 
   \item
     \textit{Aids software prefetching} \\
@@ -407,13 +403,13 @@ This is for the following reasons:
 These benefits have motivated the design of \textit{partially-structured} meshes, where only portions of the mesh are structured.
 Examples include: block-structured meshes, regularly refined meshes and extruded.
 
-An example of a partially-structured mesh is shown in Figure~\ref{fig:extruded}.
+An example extruded mesh is shown in Figure~\ref{fig:extruded}.
 Users start with an unstructured `base' mesh - here two triangles - that is \textit{extruded} to produce layers of triangular prisms.
-The mesh has `partial structure' in that the data layout up the columns is regular, but addressing the base mesh is not.
-Such meshes are useful for simulations where the aspect ratio is very uneven.
-For example modelling the `thick' shell of the atmosphere or ocean.
+The mesh has `partial structure' in that the data layout is regular up each column, but irregular for the base mesh.
+As the number of layers increases, the cost of accessing extruded meshes has been shown to approach that of structured meshes~\cite{berceaStructureexploitingNumberingAlgorithm2016}.
 
-Though exploiting partial structure of meshes does speed up codes, we would like to emphasise that, in fact, the differences in performance between structured and unstructured meshes is not actually that great.
+Of the reasons for improved performance described above, we would like to emphasise that the first of these, the ``beneficial data layout", is by far the most important, and in particular that the absence of indirection maps reducing the data volume has only a small effect.
+
 The reason for this is that the difference in data volume between the meshes usually at most 25\%.
 To demonstrate, consider a stencil code looping over the cells of a structured mesh where, for each cell, there are $p$ points accessed and $d$ \glspl{dof} per point.
 The total (minimum) amount of memory accessed is then given by
@@ -432,7 +428,7 @@ As a fraction of the structured case, the extra data required by the unstructure
 \end{equation*}
 which, since $d \geq 1$, bounds the extra data volume at 25\% of the structured case.
 
-Taking into consideration that this represents a reasonable worst-case example - stencils frequently admit more than two data structures and often have more than one \gls{dof} per point - the performance benefits of direct addressing are not very dramatic compared with the possible order-of-magnitude improvements that one can get from a correct data ordering and iteration prescription.
+Taking into consideration that this represents a reasonable worst-case example - stencils frequently admit more than two data structures and often have more than one \gls{dof} per point - the performance benefits of direct addressing are not very dramatic compared with the possible order of magnitude improvements that one can get from a good data ordering.
 Though we do address adding support for partially-structured meshes in Section~\ref{sec:future_partialstructure}, initial work on \pyop3 does not focus on it.
 
 \subsection{Orienting degrees-of-freedom}
