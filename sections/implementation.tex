@@ -534,7 +534,7 @@ For instance if the nodes are out of order then \pyop3 can apply a permutation t
     }
     \label{fig:mixedreorder_outer}
   \end{subfigure}
-  %
+  \hfill
   \begin{subfigure}{.3\textwidth}
     \centering
     \begin{tikzpicture}[x=.8cm,y=-1cm]
@@ -584,7 +584,7 @@ For instance if the nodes are out of order then \pyop3 can apply a permutation t
     \caption{A transformed data layout where the ``Spaces" and ``Points" axes have been swapped.}
     \label{fig:mixedreorder_inner}
   \end{subfigure}
-  %
+  \hfill
   \begin{subfigure}{.3\textwidth}
     \centering
     \begin{tikzpicture}[x=.8cm,y=-1cm]
@@ -645,9 +645,10 @@ This approach is roughly equivalent to permuting a \clang{PetscSection} in PETSc
 
 \subsubsection{Other locality optimisations}
 
-\pyop3's abstraction also enables code transformations such as vectorisation and tiling (Section~\ref{sec:background_opt_locality}).
-Such optimisations are not data layout transformations, but transformations of the iteration set (i.e. the multi-index).
-In both cases, the flat iteration over some axis needs to be transformed to a set of nested loops of the form
+\pyop3's abstraction also enables code transformations such as vectorisation and time-tiling (Section~\ref{sec:background_opt_locality}).
+Such optimisations are not data layout transformations, but transformations of the \textit{iteration set}.
+To enact such transformations, the iteration over the set needs to be broken into a nest of loops.
+This would look something like:
 
 \begin{minipage}{\textwidth}
 \begin{minted}[xleftmargin=4em]{c}
@@ -660,36 +661,42 @@ for (int i=0; i<NOUTER; ++i) {
 \end{minted}
 \end{minipage}
 
-In the case of vectorisation, \clang{NINNER} would correspond to the length of the vector lanes of the CPU, and if tiling it would be tailored to its cache sizes.
-
-It is valuable to note that, for unstructured meshes, tiling on its own is redundant as the amount of data shared between successive loops and prefetched by the hardware is already maximised by having an appropriate mesh numbering.
-The optimisation only becomes valuable when combined with kernel fusion to produce time tiling.
-Then the size of tiles should be chosen such that data required for both loops remains in cache between kernel invocations.
+In the case of vectorisation, \clang{NINNER} would correspond to the length of the vector lanes of the CPU.
+If time-tiling, the size of tiles should be chosen such that data required for the fused kernels remain in cache between their invocations.
 
 \subsubsection{Enabling new research}
 
-In addition to the performance benefits espoused above, this new data layout abstraction should enable one to implement a number of new mathematical methods heretofore impossible to implement in \pyop2:
+In addition to the benefits espoused above, \pyop3's data layout abstraction should enable a number of new mathematical methods that would be very hard to impossible to implement in \pyop2.
+These include:
 
 \begin{itemize}
   \item
     \textbf{p-adaptivity}
     In order to reduce the errors in a simulation, one may vary the polynomial degree of particular cells in a process known as p-adaptivity.
-    It is tricky to automate a stencil code for looping over the mesh because:
-    a) multiple local kernels are needed, one for each degree, and b) there are `hanging' \glspl{dof} at the boundaries between cells of differing degrees.
+    This introduces difficulties for stencil codes because:
+    a) multiple local kernels are needed, one for each polynomial degree; and
+    b) there are `hanging' nodes at the boundaries between cells of differing degrees.
+    \todo{Provide example}
+
     Problem (a) is trivial to resolve in \pyop3.
     Rather than having a \py{MultiAxis} that is composed only of cells, edges and vertices (each a distinct \py{AxisPart}), additional \py{AxisParts} can be added such that mesh points of different degree are associated with a unique \py{AxisPart}.
-    Problem (b) is more challenging to solve and requires the addition of \textit{constraints} to the abstraction.
+    This would mean that points would no longer be addressed with multi-indices containing typed indices of the form $c_i$, $e_i$ and $v_i$, but instead be addressed with $c^d_i$, $e^d_i$ and $v^d_i$, where $d$ corresponds to the polynomial degree of the entity.
+
+    Problem (b) is more challenging to solve and requires the addition of \textit{constraints} to the abstraction\footnote{This is the approach used by libCEED: \url{https://libceed.org/en/latest/libCEEDapi/\#finite-element-operator-decomposition}.}.
+    Adding constraints would also enable \textit{adaptive mesh refinement}.
+    Support for constraints has already been implemented for DMPlex~\cite{isaacSupportNonconformalMeshes2015}.
 
   \item
     \textbf{Mixed meshes}
-    A mixed mesh is a mesh composed of multiple different types of polytope (e.g. triangles and squares).
-    Iterating over such a mesh poses the same fundamental problem as p-adaptivity: different local kernels are required depending on the polytope type.
-    Since \pyop3 is `mesh-aware' and can reason about the different classes of mesh points, this problem becomes trivial.
+    A mixed mesh is a mesh containing multiple different types of cell (e.g. triangles and squares).
+    Iterating over such a mesh poses the same fundamental problem as p-adaptivity: different local kernels are required depending on the cell type.
+    Since \pyop3 is `mesh-aware' and can reason about the different classes of mesh points, this problem becomes trivial to solve, though care is still needed when handling orientations.
 
   \item
     \textbf{Particle-in-cell methods}
     Particle-in-cell methods are a type of numerical method where the cells of a mesh are associated with a number of, possibly advecting, particles.
-    Since the number of particles differs between cells, a variable arity map is required to address them (Section~\ref{sec:impl_datalayout_ragged}).
+    Since the number of particles differs between cells, a variable arity map is required to address them.
+    This is addressed in Section~\ref{sec:impl_datalayout_ragged}.
 \end{itemize}
 
 \subsection{Parallel design}
@@ -773,7 +780,6 @@ In addition to the performance benefits espoused above, this new data layout abs
       \tkzDrawPoints[p1vert,size=5](p1v4,p1v5,p1v6,p1v7)  % core
       % \tkzDrawPoints[p1vert,diamond,size=6](p1v8,p1v9,p1v10,p1v11)  % owned
       \tkzDrawPoints[p1vert,diamond,size=6](p1v8,p1v9,p1v11)  % owned
-      \tkzDrawPoints[p1vert,diamond,size=6,draw=black](p1v10)  % owned
       \tkzDrawPoints[p2vert,diamond,opacity=.5,size=6](p1v12,p1v13,p1v14,p1v15)
 
       % debugging
@@ -800,6 +806,9 @@ In addition to the performance benefits espoused above, this new data layout abs
       \node (p1owned) [inner sep=0pt,xshift=-10pt,yshift=20pt] at (p1v11) {\footnotesize owned};
       \draw [-{stealth},shorten >=4pt,shorten <=2pt] (p1core.south) -- (p1v7.north);
       \draw [-{stealth},shorten >=4pt,shorten <=2pt] (p1owned.south) -- (p1v11.north);
+
+      % for some reason needs to be after the arrows or they also get big
+      \tkzDrawPoints[p1vert,diamond,size=6,draw=black,line width=1pt](p1v10)  % owned + patch centre
     \end{scope}
 
     % process 2
@@ -885,91 +894,119 @@ In addition to the performance benefits espoused above, this new data layout abs
     \node (p2name) at (6.5,4.2) {Process 2};
   \end{tikzpicture}
   \caption{
-    An example mesh distributed between two processes (red and blue).
-    The mesh is intended for vertex patches (shaded) and so the overlap is chosen such that all required \glspl{dof} are stored locally.
+    An example of a mesh distributed between two processes.
+    Points `belonging' to processes 1 and 2 are shown in red and blue respectively.
+    The mesh is needed for vertex patches (shaded) and so the size of the overlap is chosen such that all required \glspl{dof} are stored locally.
     `Core' vertices are stored as circles and `owned' as diamonds.
     The direction of halo exchanges is indicated by the arrows.
   }
   \label{fig:halos}
 \end{figure}
 
-At present, \pyop3 implements an identical approach to distributed computing as \pyop2: \py{Globals}, \py{Dats} and \py{Mats} are distributed between processes using MPI parallelism; a hybrid model including shared memory (e.g. OpenMP) is not used.
+At present, \pyop3 implements an identical approach to distributed computing as \pyop2: \py{Globals}, \py{Dats} and \py{Mats} are distributed between processes using only MPI parallelism.
+Hybrid parallel models with shared memory (e.g. OpenMP) are not supported.
 
 To begin with, distribution of \py{Globals} is trivial.
-They represent globally consistent values and so consensus between processes is reached via global reductions.
+They represent globally consistent values and so consensus between processes is reached via all-to-all broadcasts.
 
 \subsubsection{Dats}
 
-In stark contrast, \py{Dats} are distributed in a much more interesting manner.
-Each process has a set of \glspl{dof} that it `owns' plus a `halo' region containing adjacent \glspl{dof} required for computations over the owned points.
-Also, the points \textit{in the iteration set} belonging to the process are classified into \textit{core} and \textit{owned} sets.
-Core points are those where a computation can be executed without requiring an up-to-date set of halo entries and owned points are those where it is required.
-Classifying the points into these two categories allows \pyop3 to interleave computation and communication: \textit{core} points can be computed over while the halo exchanges required for \textit{owned} points are in-flight.
+\py{Dats}, by comparison, are distributed in a much more complicated way.
+Every \gls{dof} stored by a \py{Dat} `belongs' to a single process but it may be needed for a stencil on a process storing adjacent points.
+Each process therefore stores a set of \textit{halo} \glspl{dof} that belong to other processes.
+To ensure that computations are always done with up-to-date values, \textit{halo exchanges} are triggered whenever one wishes to read halo data (writing to halos is fine).
 
-This situation is illustrated in Figure~\ref{fig:halos}.
-It shows a mesh distributed across two processes.
+Since halo values only exist on the outside of the mesh volume allocated to a particular process, points in the iteration set are classified as either \textit{core} and \textit{owned}.
+Core points are those where a computation can be executed without requiring an up-to-date set of halo entries.
+Conversely, owned points are those where an up-to-date halo is required.
+Such points exist only near the boundaries of the distributed mesh.
+Classifying the points into these categories lets \pyop3 interleave computation and communication: core points are be computed over while the halo exchanges required for owned points are in-flight.
+
+An example distributed mesh is shown in Figure~\ref{fig:halos}.
 Points `belonging' to a process are shown in red and blue respectively and the halo values are shown in the appropriate colour for each.
 
 In this example, the stencil getting used in the iteration is the closure of the patch of cells around a vertex (i.e. $\closure(\plexstar(v))$).
 Since this constitutes a fairly large stencil, the halos have to be correspondingly larger to contain all of the values required by the vertices belonging to the process.
 
-In the figure, \textit{core} vertices are shown as circles and \textit{owned} as diamonds.
-One can see that stencils involving the \textit{core} vertices can be executed without the need for a halo exchange (all points in the stencil are the same colour/on the same process as the vertex itself).
-Similarly, the patches around \textit{owned} vertices contain at least one mesh point belonging to another process and hence a halo exchange is required.
+In the figure, core vertices are shown as circles and owned as diamonds.
+One can see that stencils involving the core vertices can be computed without the need for a halo exchange because all points in the stencil are the same colour (i.e. on the same process) as the vertex itself.
+Similarly, the patches around owned vertices contain at least one mesh point belonging to the other process and hence a halo exchange is required.
 
 In this example we have chosen to demonstrate mesh partioning using halos of the smallest possible size.
-This is frequently desirable, smaller halos mean less data is transferred, but not in every case.
-If the cost of computing the stencils is smaller than the cost of data movement one may want a larger halo.
-This gains in terms of reduced data movement, but leads to each process performing some extra computations inside the wider halo region.
+This is frequently desirable - smaller halos means a reduced volume data is transferred - but not universally so.
+If the cost of computing the stencils is smaller than the cost of the halo exchanges one may want a larger halo to reduce the number of messages sent between processes at the cost of performing some redundant computations inside the wider halo region.
+This gains in terms of reduced data movement, but leads to each process 
 Such a strategy is not currently implemented in \pyop2 or \pyop3, but it has been pursued in the past~\cite{luporiniAutomatedTilingUnstructured2019}.
+DMPlex has support for specifying meshes with arbitrary overlap (i.e. halo depth).
 
 \subsubsection{Mats}
 \label{sec:impl_parallel_matrices}
 
-\pyop3 currently\footnotemark relies on PETSc to provide routines for matrix insertion.
-In parallel, PETSc distributes the data by partitioning the rows between processes.
-\footnotetext{We would like to have a more unified abstraction for \py{Globals}, \py{Dats} and \py{Mats} but this is very preliminary work and not discussed in this report.}
+\pyop3 currently relies on PETSc to provide routines for matrix insertion\footnote{We would like to have a more unified abstraction for \py{Globals}, \py{Dats} and \py{Mats} such that this reliance on PETSc goes away, but this is very preliminary work and not discussed here.}.
+In parallel, PETSc distributes the data by partitioning the rows between processes\footnote{\url{https://petsc.org/release/docs/manual/mat/\#parallel-aij-sparse-matrices}}.
 
-\subsubsection{Scaling}
+\subsubsection{Weak-scaling}
 
-Weak-scaling is an appropriate metric to evaluate the parallel communication design patterns described above, and in fact both PyOP2 and PETSc have been demonstrated to have good weak-scaling performance~\cite{rathgeberFiredrakeAutomatingFinite2016}. % FIXME include PETSc citation
-Strong-scaling is a different story and is addressed in Section~\ref{sec:impl_overhead}.
+Weak-scaling (Section~\ref{sec:background_perf_efficiency}) is an appropriate metric to evaluate the parallel communication design patterns described above.
+Firedrake, and therefore PyOP2 and PETSc by extension, has been demonstrated to have good weak-scaling performance~\cite{rathgeberFiredrakeAutomatingFinite2016}.
+Since \pyop3 reuses concepts from \pyop2, we expect similar behaviour.
+Strong-scaling performance is addressed in Section~\ref{sec:impl_overhead}.
 
 \subsection{Avoiding Python overhead}
 \label{sec:impl_overhead}
+\todo{This could probably be turned into an entire chapter where I also discuss my contributions to speed up Firedrake (e.g. assemble, assign, freezing halos).}
 
-Python is the language of choice for \pyop3 for a number of compelling reasons.
-Dynamic typing and being interpreted instead of compiled makes it very fast for users to prototype code.
-It also has great syntax, especially for domain-specific languages.
-User scripts are frequently shorter than 100 lines of code.
+Python is the language of choice for \pyop3 for a number of compelling reasons:
 
-The primary complaint levelled at Python is that it is much slower, often by a factor of 100, than a compiled language like C or Fortran.
-In general this issue is not important in code generation frameworks like \pyop3 and Firedrake since the performance critical parts of the code - the `hot loops' - are actually compiled C code and just as fast as code that is written by hand.
-The fact that the rest of the library is written in Python does not matter as only a tiny fraction of the programs runtime is spent there.
+\begin{itemize}
+  \item It is a mature language with a wealth of pre-existing libraries so interoperability with other applications is streamlined.
+    \item Its dynamically typed and interpreted nature allows users to prototype code very quickly.
+    \item The syntax is very flexible, making it easy to develop embedded domain-specific languages that are concise and readable.
+\end{itemize}
 
-However, there is one significant occasion where this claim falls down, and our choice of Python as language causes trouble: in the strong-scaling limit (Section~\ref{sec:background_perf_efficiency}).
-In this limit the problem occupying the `hot loops' is `small' and hence completes very quickly.
-This means that more time is spent in the Python interpreter which is slow.
-Firedrake has been observed to have poor strong-scaling behaviour~\cite{changComparativeStudyFinite2018}\footnote{The results shown in this paper are exaggerated. We found that it was possible to substantially improve scaling performance with a few minor code modifications.}.
+The main argument levelled against using Python for scientific computing applications is that it is much slower than a compiled language like C or Fortran.
+However, this issue is generally not important to code generation frameworks like \pyop3 and Firedrake.
+The performance critical parts of the code - the `hot loops' - are just-in-time compiled to machine code and so performance is roughly the same as hand-written code.
+The fact that the rest of the library is written in Python does not matter as only a tiny fraction of the programs runtime is spent executing it.
+The performance hotspots should all be compiled code.
 
-The solution to this issue is simple: spend less time in the Python layer.
-This can be accomplished in two ways: write the new hot loops in a compiled language, possibly via code generation, or avoid doing extra work in Python by applying judicious caching.
-Doing the former is somewhat trivial and will not be discussed here.
+Unfortunately, there is one significant occasion where this claim falls down, and our choice of Python causes trouble: in the strong-scaling limit (Section~\ref{sec:background_perf_efficiency}).
+In this limit the problem occupying the `hot loops' is not sufficiently large to dominate the program runtime and so a larger fraction of time is spent executing Python code.
+Compared with codes written in compiled languages, the problem size at which performance begins to degrade is larger, resulting in worse strong-scaling efficiency.
+This problem has been explicitly observed for Firedrake~\cite{changComparativeStudyFinite2018}\footnote{The results shown in this paper are exaggerated. We found that it was possible to substantially improve strong-scaling performance with a few minor code modifications.}.
+
+The solution to the issue is simple: \pyop3 needs to spend as little time as possible executing Python code.
+This can realistically be accomplished in two ways.
+Firstly, one could accelerate the new hot loops by rewriting them in a compiled language.
+This could be done manually using a compiled language bound to Python (e.g. Cython\footnote{\url{https://cython.org/}}), or possibly with code generation.
+Alternatively, the library could apply judicious caching in order to minimise the number of times a function is called.
+Of these the former is somewhat trivial and will not be discussed here.
 We will instead focus on achieving performant caching solutions in \pyop3.
 
-Since the principle object in \pyop3 is the loop expression, we will only discuss this.
-As mentioned in Section~\ref{sec:impl_jit}, one way to execute a loop expression is to use the function \py{do_loop(...)}.
-This instantiates a new loop expression and then executes it.
-While concise, this function is not suitable if one wants to execute an identical loop expression repeatedly because, at each iteration, the expression needs to be hashed prior to being able to use any internal caching (e.g. for the generated code).
+\subsubsection{Caching loop expressions}
 
-To resolve this particular issue one can create a persistent loop expression via the command \py{expr = loop(...)} (taking the same arguments as \py{do_loop(...)}), which can then be executed with \py{expr.apply()}.
-Having a persistent expression means that it can be hashed once and any cached objects may be directly accessed.
+As mentioned in Section~\ref{sec:impl_interface}, one can use either the function \py{do_loop(...)} to instantiate and then immediately execute a loop expression, or the function \py{loop(...)} to create a persistent expression that can be called multiple times.
+While more concise, the former is not suitable for executing identical loop expressions repeatedly due to extra Python overhead involved with instantiating the expression.
+The latter naturally avoids this overhead by only instantiating the expression once.
 
-At this point, however, care needs to be taken with the data structures involved.
-The loop expression is created using `heavy' data-carrying objects like \py{Dats} and \py{Mats} and so indiscriminate caching of the expression would result in a memory leak.
-Along similar lines, it is also difficult to `swap out' data structures in the loop expression without requiring the instantiation of a brand new expression.
-In other words, if one wanted to, say, execute the same loop expression but write the output to a different data structure, then this would require the creation of a new loop expression and reincur the, totally unnecessary, cost of hashing the expression.
+Having persistent loop expressions introduces a couple of new complications.
+In particular, loop expressions are instantiated with reference to specific data structures (e.g. \py{mesh}, \py{dat0} and \py{dat1} in Listing~\ref{lst:basicloop}). 
+This causes trouble in two ways:
 
-To resolve this, \pyop3 loop expressions will store \textit{weak references} to the data structures in the loop expression and \py{expr.apply} will take optional keyword arguments to swap out the data structures as appropriate (e.g. \py{expr.apply(out=mynewdat)}).
-In Python, weak references are references to objects that do not increase their \textit{reference count}.
-This prevents memory leaks because the lifetime of a data structure will only be tied to its own scope, they will still be cleaned up even if they are referenced in a cached loop expression.
+\begin{enumerate}
+  \item
+    \textit{Executing identical loop expressions with different data structures requires separate instantiations}
+
+    This is an inconvenient expense for Firedrake's \py{assemble} function for example, where one can assemble the same input multiple times but write to a different output.
+
+  \item
+    \textit{Caching loop expressions causes memory leaks}
+
+    One may wish to cache loop expressions to facilitate reuse.
+    However, the data structures referenced by the expression have a large memory footprint and if the loop expressions remain in the cache then they will never be removed by the Python garbage collector, resulting in leaking significant amounts memory.
+\end{enumerate}
+
+To resolve issue 1, users are able to pass keyword arguments when calling \pyop3 loop expressions to swap out data structures on the fly (e.g. \py{expr(output=mynewoutput)}).
+Since this approach requires references to the other data structures to persist, issue 2 is then resolved by using \textit{weak references} to the data structures.
+Weak references in Python are references that do not increase the reference count of the object.
+This means that memory leaks cannot occur even when caching expressions since the data structures will still be cleaned up when they go out of scope.
