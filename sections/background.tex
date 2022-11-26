@@ -1,76 +1,81 @@
 \section{Background}
+\label{sec:background}
 
-In this section we review existing software abstractions for mesh computations and discuss common strategies for optimising performance.
+\subsection{Stencil computations}
 
-\subsection{Stencil languages}
+Stencil computations are ubiquitous in the numerical solution of \glspl{pde}.
+Given a computational domain described as a (possibly unstructured) mesh along with data associated with certain topological entities in the mesh (e.g. the vertices), a stencil computation refers to the process of:
+a) looping over some subset of topological entities,
+b) reading data that is `close' to the current entity (a \textit{stencil}),
+c) executing some computation (kernel) using the stencil as input, and
+d) scattering the computation result back to some global data structure.
+\todo{A picture would be nice to help illustrate this - like the PyOP2 one.}
+
+An important example of a stencil computation is \textit{finite element assembly}, itself one of the stages of \gls{fem}.
+\todo{Could easily write a lot more on FEM.}
+In the assembly process, integrals are evaluated for each cell of the mesh and the results are incremented into a global matrix and vector.
+For \gls{fem}, the stencil is defined to be all \glspl{dof} stored on the cell and its connected edges and vertices (a.k.a. the cell's \textit{closure} - see Section~\ref{sec:background_mesh_dmplex}).
+For \gls{dg} methods the iteration set can sometimes be the facets of the mesh, and the stencils the closure `macro cell' formed of the two cells that touch the facet.
+
+Although this work will largely focus specifically on \gls{fem}, the concept of a stencil computation applies equally to finite difference and finite volume methods.
+
+\subsection{Existing software for stencil computations}
 \label{sec:stencillang}
 
-% TODO what is a stencil language?
+Given the abstraction's wide range of applications, a fair number of libraries exist for (at least partially) automating the work of developing a stencil application.
+For the following we choose to classify these libraries according to whether they are `mesh-aware' or `mesh-oblivious'.
+By mesh-aware we mean that the library is responsible for interacting with and querying the mesh whereas mesh-oblivious libraries are unaware of the mesh's specific implementation and responsibility for executing the right topological queries is passed to the library's user.
+As we will discuss, there are advantages and drawbacks to both approaches.
 
-% can be classified according to whether or not they know about the mesh - makes describing connectivity clearer,
-% but requires a hand-written mesh implementation lacking features and hard to maintain
+Some notable examples of mesh-aware stencil libraries include the \glspl{dsl} Liszt~\cite{devitoLisztDomainSpecific2011}, Ebb~\cite{bernsteinEbbDSLPhysical2016} and Simit~\cite{kjolstadSimitLanguagePhysical2016}.
+Liszt represents meshes as collections of \textit{sets}, with \textit{topological relations} between them.
+It supports both distributed memory parallelism through MPI and shared memory parallelism with pthreads; GPUs are also supported.
+Instead of explicitly being for unstructured meshes, Ebb takes a more abstract approach and opts for using database-style \textit{relations} to describe the connectivity of the mesh.
+This permits Ebb to also handle structured meshes which are typically faster (see Section~\ref{sec:background_structure}).
+Distributed memory parallelism is currently not supported.
+Lastly, Simit represents unstructured meshes using \textit{hypergraphs}.
+Like Ebb, distributed memory parallelism is not supported.x
 
-Given the ubiquity of stencil operations in simulations, a number of libraries exist providing convenient interfaces for stencil applications.
+Having the library be mesh-aware, all three \glspl{dsl} are able to be highly expressive and flexible and entire applications can be written in fewer than 100 lines of code.
+However, in order to accomplish this, each one has had to implement its own custom mesh implementation inevitably resulting in an increased maintenance burden for the developer and a reduced feature set compared to more widely used mesh frameworks such as DMPlex (Section~\ref{sec:background_mesh_dmplex}).
 
-% they are largely all inspired by the following pieces of info:
-% - a mesh can be considered as sets of entities
-% - one loops over a set, collects adjacent data, then calls some local kernel
-% - the local kernel may be written in the same language as the stencil language, but it needn't be
+A good example of a mesh-oblivious stencil library is OP2~\cite{mudaligeOP2ActiveLibrary2012,mudaligeDesignInitialPerformance2013}.
+Rather than being a \gls{dsl}, users write code including calls to the OP2 API which is then source-to-source translated into optimised code which can then be compiled.
+Similar to Liszt, topological entities are represented as \textit{sets} and topological relations by \textit{maps} between sets.
+Stencil computations are expressed as \textit{parallel loops} where the user declares the \textit{kernel} to be executed, the \textit{iteration set} and the \textit{arguments} to the kernel where each argument consists of a parallel vector (termed a \textit{dat}), an access descriptor (e.g. \clang{OP_READ} or \clang{OP_INC}) and an optional indirection map.
 
-Ebb, Simit and Liszt follow the approach of providing a domain-specific language for the expression of stencil problems...
-They all provide high performance execution on GPUs as well as CPUs.
+OP2 supports a wide range of backends and has support for distributed memory parallelism, in fact it has a clever solution for interleaving computation and communication to aid performance (Section~\ref{sec:impl_parallel_dats}).
 
-% i don't think simit works on MPI
+Since OP2 is mesh-oblivious and therefore stores no information about the underlying mesh it is entirely agnostic to the specific mesh implementation, giving maximum flexibility to the user.
+However, as a consequence the non-trivial burdens of determining the sets and tabulating the indirection maps are passed to the user resulting in more complicated and less readable code.
 
-OP2 is another approach~\cite{mudaligeOP2ActiveLibrary2012,mudaligeDesignInitialPerformance2013}.
-Rather than using a domain-specific language, OP2 provides a simple API to the user for specifying the problem.
-The key entities in the OP2 data model are: sets, data on sets, mappings between sets, and operations applied over these sets.
-Having provided these inputs, the OP2 compiler is then called and transforms to source code to a high performance implementation of the traversal for a specific architecture.
+\subsubsection{\pyop2}
 
-% then PyOP2
-% describe libCEED - main benefit is that it is fast.
+\pyop2 is a mesh-oblivious stencil library intended to be a Python implementation of OP2~\cite{rathgeberPyOP2HighLevelFramework2012}.
+Since the fundamental OP2 concepts of sets, maps between sets and parallel loops are naturally the same, the main difference between the two libraries is that \pyop2 is a \textit{runtime implementation} whereas OP2 depends on static analysis and source-to-source code transformations.
+Being a runtime implementation, \pyop2 has access to runtime-specific information that it can exploit to enable additional optimisations.
 
-% it is noteworthy that Ebb, Simit, Liszt have custom implementations of unstructured meshes.
-% whereas (Py)OP2 and libCEED have an abstraction that does not specifically include a mesh.
-% the latter is favourable as one can reuse existing solutions to other mesh problems like
-% refinement, adaptivity, I/O, decomposition...
-% however, lack of topological information can make code unreadable, hard to write as
-% topological info is lost, e.g. composability is not really possible.
+Beyond this core difference, \pyop2 also has a slightly different feature set to OP2:
 
-% this leads very nicely into discussion of DMPlex
-% note: we don't have a nice solution to orientations yet - but no one does
+\begin{itemize}
+  \item
+    Only distributed memory parallelism is supported.
+  \item
+    Parallel loops can assemble sparse matrices.
+  \item
+    Execution on GPUs is still a work-in-progress~\cite{fenics2021-kulkarni}.
+  \item
+    Iteration over extruded meshes is supported (Section~\ref{sec:background_structure}).
+\end{itemize}
 
-Another library for the application of stencil operations, specifically high-order matrix-free kernels for the \gls{fem}, is libCEED.
-% libceed - actually offloaded to PETSc for element restriction (the bit PyOP2 does)
-% it's nice that libCEED and PyOP2 use DMPlex as the burden of other mesh operations (e.g. distribution, I/O, refinement) are very non-trivial
+% briefly mention Firedrake TSFC UFL, loopy - context needed for later
+\pyop2 is used extensively by Firedrake, a library for automating the solution of \glspl{pde} using \gls{fem}~\cite{rathgeberFiredrakeAutomatingFinite2016}.
+\todo{Could add a load more detail if desired}
+In Firedrake, users express their \gls{pde} of interest (in weak form) in near-mathematical notation using \gls{ufl}, a \gls{dsl} embedded in Python~\cite{alnaesUnifiedFormLanguage2014a}.
+Firedrake can then compile this form using \gls{tsfc}~\cite{homolyaTSFCStructurePreservingForm2018} before marshalling both \pyop2 and PETSc~\cite{petsc-web-page,petsc-user-ref,petsc-efficient} (a linear algebra toolkit) to automate its solution.
 
-\subsubsection{PyOP2}
-
-PyOP2 is a domain-specific language for expressing computations over unstructured meshes.
-It is the direct precursor, and inspiration for, \pyop3.
-
-It distinguishes itself from OP2, a library depending on the same abstractions, by using run-time code generation instead of static analysis and transformation of the source code.
-
-PyOP2's mesh abstraction is formed out of the following main components:
-
-% \begin{itemize}
-%   \item \mintinline{python}{set}
-% \end{itemize}
-
-In PyOP2, data is defined on \textit{sets} and these are related to one another using \textit{mappings}.
-Importantly, this abstraction does not contain any concept of the underlying mesh and instead all of the required information is encoded in the maps.
-
-  Computations over the mesh are expressed as the execution of some local kernel over all entities of some iteration set via a construct called a parallel loop, or \textit{parloop}.
-  The kernel is written using Loopy, a library for expressing array-based computations in a platform-generic language~\cite{klocknerLooPyTransformationbased2014}.
-  This intermediate representation allows for interplay between the local kernels enabling optimisations such as inter-element vectorisation~\cite{sunStudyVectorizationMatrixfree2020}.
-
-  At present, PyOP2 only works on distributed memory, CPU-only systems (although some work has been done to permit execution on GPUs~\cite{fenics2021-kulkarni}).
-  During the execution of a parloop, each rank works independently on some partition of the mesh.
-  To avoid excessive communication between ranks, each rank has a narrow \textit{halo} region that overlaps with neighbouring ranks that is executed redundantly.
-  The halos are split into \textit{owned}, \textit{exec}, and \textit{non-exec} regions to indicate the data's origin and the communication direction between the neighbouring processes.
-
-
-% Liszt, Simit - notably associates data information with topological entities
+One of the places where Firedrake uses \pyop2 is to assemble the global matrix and vector required by \gls{fem}.
+To do this the compiled form is used as the \textit{kernel} for a \pyop2 parallel loop and the \textit{iteration set} is the cells of the mesh.
 
 \subsection{Mesh representations}
 \label{sec:background_mesh}
@@ -159,11 +164,15 @@ Importantly, this abstraction does not contain any concept of the underlying mes
   \label{fig:plex_restrictions}
 \end{figure}
 
+In software, a mesh is typically represented by sets of topological entities (e.g. cells, edges and vertices) along with adjacency relations between these sets.
 
-% need to emphasise the difference between nodes and points
+% here
+
+% need to emphasise the difference between DoFs, nodes and points
 % and basis functions vs coefficients - ref orientation issues discussed later
 
-In software, a mesh is typically represented by a collection of sets of entities (e.g. cells or faces), coupled with adjacency relations between these sets.
+% describe MOAB and others(?), then DMPlex in its own section
+
 Possible abstractions capturing this behaviour include databases (ebb, moab) or hypergraphs (simit).
 In this work we focus on DMPlex, the unstructured mesh abstraction used in PETSc.
 In contrast with Ebb, Simit or Liszt, DMPlex is a more general purpose mesh abstraction and so has a more substantial feature set.
@@ -187,6 +196,242 @@ One can also do clever patch things.
 
 With DMPlex, parallel vectors are created by associating a DMPlex mesh with a \clang{PetscSection}.
 A \clang{PetscSection} is a simple object that tabulates offsets such that entries in an array may be addressed.
+
+\subsection{Orienting degrees-of-freedom}
+\label{sec:background_orientation}
+
+\begin{figure}
+  % macros
+  \newcommand{\trianglestyles}{%
+    \tikzstyle {segment} = [line width=1.2pt];
+    \tikzstyle {dof} = [draw=black,line width=1.2pt];
+    \tikzstyle {celldof} = [dof,fill=blue!50];
+    \tikzstyle {edgedof} = [dof,fill=red!60];
+    \tikzstyle {vertdof} = [dof,fill=yellow!80];
+    \tikzstyle {doftext} = [font=\bf];
+    \tikzstyle {vdof} = [-stealth,draw=red!60,line width=1.9];
+  }
+
+  \newcommand{\stylesegmentsone}{%
+    \tkzSetUpStyle[
+      postaction=decorate,
+      decoration={
+        markings,
+        mark=at position .53 with {\arrow[very thick]{##1}},
+      }
+    ]{myarrow}
+  }
+
+  \newcommand{\stylesegmentstwo}{%
+    \tkzSetUpStyle[
+      postaction=decorate,
+      decoration={
+        markings,
+        mark=at position .78 with {\arrow[very thick]{##1}},
+        mark=at position .28 with {\arrow[very thick]{##1}},
+      }
+    ]{myarrow}
+  }
+
+  \newcommand{\deftriangle}{%
+    \trianglestyles
+    \tkzDefPoint(0,0){v0}
+    \tkzDefShiftPoint[v0](0:3){v1}
+    \tkzDefShiftPoint[v0](60:3){v2}
+  }
+
+  \newcommand{\drawtriangle}{%
+    \deftriangle
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v1)
+    \tkzDrawSegment[myarrow=stealth,segment](v1,v2)
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v2)
+  }
+
+  \newcommand{\drawflippedtriangle}{%
+    \deftriangle
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v1)
+    \tkzDrawSegment[myarrow=stealth,segment](v2,v1)
+    \tkzDrawSegment[myarrow=stealth,segment](v0,v2)
+  }
+
+  % figure
+  \centering
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \stylesegmentsone
+      \drawtriangle
+
+      % vert dofs
+      \filldraw [vertdof] (v0) node [doftext] {0} circle [radius=7pt];
+      \filldraw [vertdof] (v1) node [doftext] {1} circle [radius=7pt];
+      \filldraw [vertdof] (v2) node [doftext] {2} circle [radius=7pt];
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=2.3,v1=1) \tkzGetPoint{e0d0}
+      \filldraw [edgedof] (e0d0) node [doftext] {7} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v1=2.3) \tkzGetPoint{e0d1}
+      \filldraw [edgedof] (e0d1) node [doftext] {8} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=2.3,v2=1) \tkzGetPoint{e1d0}
+      \filldraw [edgedof] (e1d0) node [doftext] {3} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=1,v2=2.3) \tkzGetPoint{e1d1}
+      \filldraw [edgedof] (e1d1) node [doftext] {4} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=2.3,v2=1) \tkzGetPoint{e2d0}
+      \filldraw [edgedof] (e2d0) node [doftext] {5} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v2=2.3) \tkzGetPoint{e2d1}
+      \filldraw [edgedof] (e2d1) node [doftext] {6} circle [radius=7pt];
+
+      % cell dof
+      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0d0}
+      \filldraw [celldof] (c0d0) node [doftext] {9} circle [radius=7pt];
+    \end{tikzpicture}
+    \caption{Reference Lagrange finite element with polynomial degree 3.}
+    \label{fig:orient_basic_ref}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \stylesegmentsone
+      \drawflippedtriangle
+
+      % vert dofs
+      \filldraw [vertdof] (v0) node [doftext] {0} circle [radius=7pt];
+      \filldraw [vertdof] (v1) node [doftext] {1} circle [radius=7pt];
+      \filldraw [vertdof] (v2) node [doftext] {2} circle [radius=7pt];
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=2.3,v1=1) \tkzGetPoint{e0d0}
+      \filldraw [edgedof] (e0d0) node [doftext] {7} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v1=2.3) \tkzGetPoint{e0d1}
+      \filldraw [edgedof] (e0d1) node [doftext] {8} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=2.3,v2=1) \tkzGetPoint{e1d0}
+      \filldraw [edgedof] (e1d0) node [doftext] {4} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=1,v2=2.3) \tkzGetPoint{e1d1}
+      \filldraw [edgedof] (e1d1) node [doftext] {3} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=2.3,v2=1) \tkzGetPoint{e2d0}
+      \filldraw [edgedof] (e2d0) node [doftext] {5} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v2=2.3) \tkzGetPoint{e2d1}
+      \filldraw [edgedof] (e2d1) node [doftext] {6} circle [radius=7pt];
+
+      % cell dof
+      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0d0}
+      \filldraw [celldof] (c0d0) node [doftext] {9} circle [radius=7pt];
+    \end{tikzpicture}
+    \caption{Degree 3 Lagrange finite element with an edge flipped.}
+    \label{fig:orient_basic_flip}
+  \end{subfigure}
+
+  \vspace{1em}
+
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \stylesegmentstwo
+      \drawtriangle
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=1,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefShiftPoint[e0d0](-90:.8){e0d0v}
+      \draw [vdof] (e0d0) -- (e0d0v);
+      \filldraw [edgedof] (e0d0) node [doftext] {2} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefShiftPoint[e1d0](150:.8){e1d0v}
+      \draw [vdof] (e1d0) -- (e1d0v);
+      \filldraw [edgedof] (e1d0) node [doftext] {1} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=1,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefShiftPoint[e2d0](210:.8){e2d0v}
+      \draw [vdof] (e2d0) -- (e2d0v);
+      \filldraw [edgedof] (e2d0) node [doftext] {0} circle [radius=7pt];
+    \end{tikzpicture}
+    \caption{Reference Raviart-Thomas finite element.}
+    \label{fig:orient_vector_ref}
+  \end{subfigure}
+  %
+  \begin{subfigure}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}
+      \stylesegmentstwo
+      \drawflippedtriangle
+
+      % edge dofs
+      \tkzDefBarycentricPoint(v0=1,v1=1) \tkzGetPoint{e0d0}
+      \tkzDefShiftPoint[e0d0](-90:.8){e0d0v}
+      \draw [vdof] (e0d0) -- (e0d0v);
+      \filldraw [edgedof] (e0d0) node [doftext] {2} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v0=1,v2=1) \tkzGetPoint{e1d0}
+      \tkzDefShiftPoint[e1d0](150:.8){e1d0v}
+      \draw [vdof] (e1d0) -- (e1d0v);
+      \filldraw [edgedof] (e1d0) node [doftext] {1} circle [radius=7pt];
+
+      \tkzDefBarycentricPoint(v1=1,v2=1) \tkzGetPoint{e2d0}
+      \tkzDefShiftPoint[e2d0](30:.8){e2d0v}
+      \draw [vdof] (e2d0) -- (e2d0v);
+      \filldraw [edgedof] (e2d0) node [doftext] {0} circle [radius=7pt];
+    \end{tikzpicture}
+    \caption{Raviart-Thomas element with an edge flipped.}
+    \label{fig:orient_vector_flip}
+  \end{subfigure}
+
+  \caption{
+    The effect of edge flips on both scalar- and vector-valued finite elements on triangles.
+    Cell, edge and vertex \glspl{dof} are shown in blue, red and yellow respectively.
+  }
+  \label{fig:orient}
+\end{figure}
+
+When writing the local kernel for a stencil computation, the process is considerably simplified by assuming that the data being passed in from the iteration engine (here \pyop3) is in some canonical ordering.
+Unfortunately, guaranteeing such an ordering a priori is often difficult as entities in the stencil may have different relative orientations.
+To give an example, with an arbitrary global numbering of vertices, it is possible for a mesh to contain cells with `flipped' edges relative to their canonical orientation.
+If multiple \glspl{dof} are stored along the edge then this will result in reading them in the wrong order, breaking the code.
+An example of this for triangles is shown in Figure~\ref{fig:orient}.
+Figure~\ref{fig:orient_basic_ref} shows the canonical ordering for a degree 3 Lagrange finite element.
+Note how flipping an edge (Figure~\ref{fig:orient_basic_flip}) results in a permutation of the stencil \glspl{dof}.
+
+The situation is further complicated when the \glspl{dof} stored at each node are vector-valued, for example with \hdiv and \hcurl conforming elements in \gls{fem}.
+With vector \glspl{dof} it can happen that, as well as possibly being out of order, the loaded vectors can `point' in the wrong direction, requiring the application of some transformation to achieve a canonical representation.
+For example, in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} one can see that the effect of flipping an edge inverts the direction of the vector \glspl{dof}, so they must be multiplied by -1 to return to canonical.
+Things get even more difficult in 3D because vector-valued \glspl{dof} on facets can be defined relative to the two tangent vectors of the face.
+The transformation back to canonical therefore can require rotations (via $2\times2$ matrices) as well as flips.
+
+\subsubsection{A partial solution: Mesh renumbering}
+
+The approach used to `fix' the orientation issue used in most finite element libraries is to exploit the fact that, for a variety of cell types, it is possible to determine a global numbering of the vertices of the mesh such that all cells have the same orientation.
+In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyDiv2010} and quadrilaterals~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
+It is also possible to number unstructured hexahedral meshes in this manner, but the algorithm cannot be performed in parallel and it will not work for all possible meshes~\cite{agelekOrientingEdgesUnstructured2017}.
+In particular, if a subset of the mesh forms a Möbius strip then it is not orientable.
+
+The mesh renumbering approach is also unsuitable for other cell types (e.g. pyramids) or \textit{mixed mesh} methods.
+
+It is clear that a renumbering strategy is not a sufficiently general solution to the orientation problem.
+Therefore the stencil library abstraction needs to permit for different orientations.
+
+\subsubsection{The next step: Permuting scalar \glspl{dof}}
+
+As shown in Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_basic_flip}, loading scalar data for cells with flipped edges will result in the data being packed in the wrong order.
+To avoid this, the \glspl{dof} need to be \textit{permuted} prior to packing.
+This permutation can actually be precomputed and form part of the indirection maps used to address the stencils.
+
+\subsubsection{All the way there: Transforming vector \glspl{dof}}
+
+The above approach works for all scalar-valued function spaces, but is insufficient for vector-valued ones due to the need for transformations of the \gls{dof} values themselves.
+For example, as described above, the flip shown in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} mean that the \glspl{dof} need to be scaled by -1 prior to packing.
+It is not possible to store non-permutation transformations inside an indirection map and so the stencil application needs to implement a separate stage to resolve these orientation transformations.
+This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{loggAutomatedSolutionDifferential2012,AlnaesBlechta2015a}.
+However, to our knowledge, this is not performed by any existing general purpose stencil library.
 
 \subsection{Methods for performance optimisation}
 
@@ -430,239 +675,3 @@ which, since $d \geq 1$, bounds the extra data volume at 25\% of the structured 
 
 Taking into consideration that this represents a reasonable worst-case example - stencils frequently admit more than two data structures and often have more than one \gls{dof} per point - the performance benefits of direct addressing are not very dramatic compared with the possible order of magnitude improvements that one can get from a good data ordering.
 Though we do address adding support for partially-structured meshes in Section~\ref{sec:future_partialstructure}, initial work on \pyop3 does not focus on it.
-
-\subsection{Orienting degrees-of-freedom}
-\label{sec:background_orientation}
-
-\begin{figure}
-  % macros
-  \newcommand{\trianglestyles}{%
-    \tikzstyle {segment} = [line width=1.2pt];
-    \tikzstyle {dof} = [draw=black,line width=1.2pt];
-    \tikzstyle {celldof} = [dof,fill=blue!50];
-    \tikzstyle {edgedof} = [dof,fill=red!60];
-    \tikzstyle {vertdof} = [dof,fill=yellow!80];
-    \tikzstyle {doftext} = [font=\bf];
-    \tikzstyle {vdof} = [-stealth,draw=red!60,line width=1.9];
-  }
-
-  \newcommand{\stylesegmentsone}{%
-    \tkzSetUpStyle[
-      postaction=decorate,
-      decoration={
-        markings,
-        mark=at position .53 with {\arrow[very thick]{##1}},
-      }
-    ]{myarrow}
-  }
-
-  \newcommand{\stylesegmentstwo}{%
-    \tkzSetUpStyle[
-      postaction=decorate,
-      decoration={
-        markings,
-        mark=at position .78 with {\arrow[very thick]{##1}},
-        mark=at position .28 with {\arrow[very thick]{##1}},
-      }
-    ]{myarrow}
-  }
-
-  \newcommand{\deftriangle}{%
-    \trianglestyles
-    \tkzDefPoint(0,0){v0}
-    \tkzDefShiftPoint[v0](0:3){v1}
-    \tkzDefShiftPoint[v0](60:3){v2}
-  }
-
-  \newcommand{\drawtriangle}{%
-    \deftriangle
-    \tkzDrawSegment[myarrow=stealth,segment](v0,v1)
-    \tkzDrawSegment[myarrow=stealth,segment](v1,v2)
-    \tkzDrawSegment[myarrow=stealth,segment](v0,v2)
-  }
-
-  \newcommand{\drawflippedtriangle}{%
-    \deftriangle
-    \tkzDrawSegment[myarrow=stealth,segment](v0,v1)
-    \tkzDrawSegment[myarrow=stealth,segment](v2,v1)
-    \tkzDrawSegment[myarrow=stealth,segment](v0,v2)
-  }
-
-  % figure
-  \centering
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \stylesegmentsone
-      \drawtriangle
-
-      % vert dofs
-      \filldraw [vertdof] (v0) node [doftext] {0} circle [radius=7pt];
-      \filldraw [vertdof] (v1) node [doftext] {1} circle [radius=7pt];
-      \filldraw [vertdof] (v2) node [doftext] {2} circle [radius=7pt];
-
-      % edge dofs
-      \tkzDefBarycentricPoint(v0=2.3,v1=1) \tkzGetPoint{e0d0}
-      \filldraw [edgedof] (e0d0) node [doftext] {7} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=1,v1=2.3) \tkzGetPoint{e0d1}
-      \filldraw [edgedof] (e0d1) node [doftext] {8} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v1=2.3,v2=1) \tkzGetPoint{e1d0}
-      \filldraw [edgedof] (e1d0) node [doftext] {3} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v1=1,v2=2.3) \tkzGetPoint{e1d1}
-      \filldraw [edgedof] (e1d1) node [doftext] {4} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=2.3,v2=1) \tkzGetPoint{e2d0}
-      \filldraw [edgedof] (e2d0) node [doftext] {5} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=1,v2=2.3) \tkzGetPoint{e2d1}
-      \filldraw [edgedof] (e2d1) node [doftext] {6} circle [radius=7pt];
-
-      % cell dof
-      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0d0}
-      \filldraw [celldof] (c0d0) node [doftext] {9} circle [radius=7pt];
-    \end{tikzpicture}
-    \caption{Reference Lagrange finite element with polynomial degree 3.}
-    \label{fig:orient_basic_ref}
-  \end{subfigure}
-  %
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \stylesegmentsone
-      \drawflippedtriangle
-
-      % vert dofs
-      \filldraw [vertdof] (v0) node [doftext] {0} circle [radius=7pt];
-      \filldraw [vertdof] (v1) node [doftext] {1} circle [radius=7pt];
-      \filldraw [vertdof] (v2) node [doftext] {2} circle [radius=7pt];
-
-      % edge dofs
-      \tkzDefBarycentricPoint(v0=2.3,v1=1) \tkzGetPoint{e0d0}
-      \filldraw [edgedof] (e0d0) node [doftext] {7} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=1,v1=2.3) \tkzGetPoint{e0d1}
-      \filldraw [edgedof] (e0d1) node [doftext] {8} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v1=2.3,v2=1) \tkzGetPoint{e1d0}
-      \filldraw [edgedof] (e1d0) node [doftext] {4} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v1=1,v2=2.3) \tkzGetPoint{e1d1}
-      \filldraw [edgedof] (e1d1) node [doftext] {3} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=2.3,v2=1) \tkzGetPoint{e2d0}
-      \filldraw [edgedof] (e2d0) node [doftext] {5} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=1,v2=2.3) \tkzGetPoint{e2d1}
-      \filldraw [edgedof] (e2d1) node [doftext] {6} circle [radius=7pt];
-
-      % cell dof
-      \tkzDefBarycentricPoint(v0=1,v1=1,v2=1) \tkzGetPoint{c0d0}
-      \filldraw [celldof] (c0d0) node [doftext] {9} circle [radius=7pt];
-    \end{tikzpicture}
-    \caption{Degree 3 Lagrange finite element with an edge flipped.}
-    \label{fig:orient_basic_flip}
-  \end{subfigure}
-
-  \vspace{1em}
-
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \stylesegmentstwo
-      \drawtriangle
-
-      % edge dofs
-      \tkzDefBarycentricPoint(v0=1,v1=1) \tkzGetPoint{e0d0}
-      \tkzDefShiftPoint[e0d0](-90:.8){e0d0v}
-      \draw [vdof] (e0d0) -- (e0d0v);
-      \filldraw [edgedof] (e0d0) node [doftext] {2} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=1,v2=1) \tkzGetPoint{e1d0}
-      \tkzDefShiftPoint[e1d0](150:.8){e1d0v}
-      \draw [vdof] (e1d0) -- (e1d0v);
-      \filldraw [edgedof] (e1d0) node [doftext] {1} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v1=1,v2=1) \tkzGetPoint{e2d0}
-      \tkzDefShiftPoint[e2d0](210:.8){e2d0v}
-      \draw [vdof] (e2d0) -- (e2d0v);
-      \filldraw [edgedof] (e2d0) node [doftext] {0} circle [radius=7pt];
-    \end{tikzpicture}
-    \caption{Reference Raviart-Thomas finite element.}
-    \label{fig:orient_vector_ref}
-  \end{subfigure}
-  %
-  \begin{subfigure}{0.45\textwidth}
-    \centering
-    \begin{tikzpicture}
-      \stylesegmentstwo
-      \drawflippedtriangle
-
-      % edge dofs
-      \tkzDefBarycentricPoint(v0=1,v1=1) \tkzGetPoint{e0d0}
-      \tkzDefShiftPoint[e0d0](-90:.8){e0d0v}
-      \draw [vdof] (e0d0) -- (e0d0v);
-      \filldraw [edgedof] (e0d0) node [doftext] {2} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v0=1,v2=1) \tkzGetPoint{e1d0}
-      \tkzDefShiftPoint[e1d0](150:.8){e1d0v}
-      \draw [vdof] (e1d0) -- (e1d0v);
-      \filldraw [edgedof] (e1d0) node [doftext] {1} circle [radius=7pt];
-
-      \tkzDefBarycentricPoint(v1=1,v2=1) \tkzGetPoint{e2d0}
-      \tkzDefShiftPoint[e2d0](30:.8){e2d0v}
-      \draw [vdof] (e2d0) -- (e2d0v);
-      \filldraw [edgedof] (e2d0) node [doftext] {0} circle [radius=7pt];
-    \end{tikzpicture}
-    \caption{Raviart-Thomas element with an edge flipped.}
-    \label{fig:orient_vector_flip}
-  \end{subfigure}
-
-  \caption{
-    The effect of edge flips on both scalar- and vector-valued finite elements on triangles.
-    Cell, edge and vertex \glspl{dof} are shown in blue, red and yellow respectively.
-  }
-  \label{fig:orient}
-\end{figure}
-
-When writing the local kernel for a stencil computation, the process is considerably simplified by assuming that the data being passed in from the iteration engine (here \pyop3) is in some canonical ordering.
-Unfortunately, guaranteeing such an ordering a priori is often difficult as entities in the stencil may have different relative orientations.
-To give an example, with an arbitrary global numbering of vertices, it is possible for a mesh to contain cells with `flipped' edges relative to their canonical orientation.
-If multiple \glspl{dof} are stored along the edge then this will result in reading them in the wrong order, breaking the code.
-An example of this for triangles is shown in Figure~\ref{fig:orient}.
-Figure~\ref{fig:orient_basic_ref} shows the canonical ordering for a degree 3 Lagrange finite element.
-Note how flipping an edge (Figure~\ref{fig:orient_basic_flip}) results in a permutation of the stencil \glspl{dof}.
-
-The situation is further complicated when the \glspl{dof} stored at each node are vector-valued, for example with \hdiv and \hcurl conforming elements in \gls{fem}.
-With vector \glspl{dof} it can happen that, as well as possibly being out of order, the loaded vectors can `point' in the wrong direction, requiring the application of some transformation to achieve a canonical representation.
-For example, in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} one can see that the effect of flipping an edge inverts the direction of the vector \glspl{dof}, so they must be multiplied by -1 to return to canonical.
-Things get even more difficult in 3D because vector-valued \glspl{dof} on facets can be defined relative to the two tangent vectors of the face.
-The transformation back to canonical therefore can require rotations (via $2\times2$ matrices) as well as flips.
-
-\subsubsection{A partial solution: Mesh renumbering}
-
-The approach used to `fix' the orientation issue used in most finite element libraries is to exploit the fact that, for a variety of cell types, it is possible to determine a global numbering of the vertices of the mesh such that all cells have the same orientation.
-In particular this has been shown to work for simplices~\cite{rognesEfficientAssemblyDiv2010} and quadrilaterals~\cite{agelekOrientingEdgesUnstructured2017,homolyaParallelEdgeOrientation2016}.
-It is also possible to number unstructured hexahedral meshes in this manner, but the algorithm cannot be performed in parallel and it will not work for all possible meshes~\cite{agelekOrientingEdgesUnstructured2017}.
-In particular, if a subset of the mesh forms a Möbius strip then it is not orientable.
-
-The mesh renumbering approach is also unsuitable for other cell types (e.g. pyramids) or \textit{mixed mesh} methods.
-
-It is clear that a renumbering strategy is not a sufficiently general solution to the orientation problem.
-Therefore the stencil library abstraction needs to permit for different orientations.
-
-\subsubsection{The next step: Permuting scalar \glspl{dof}}
-
-As shown in Figures~\ref{fig:orient_basic_ref} and~\ref{fig:orient_basic_flip}, loading scalar data for cells with flipped edges will result in the data being packed in the wrong order.
-To avoid this, the \glspl{dof} need to be \textit{permuted} prior to packing.
-This permutation can actually be precomputed and form part of the indirection maps used to address the stencils.
-
-\subsubsection{All the way there: Transforming vector \glspl{dof}}
-
-The above approach works for all scalar-valued function spaces, but is insufficient for vector-valued ones due to the need for transformations of the \gls{dof} values themselves.
-For example, as described above, the flip shown in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} mean that the \glspl{dof} need to be scaled by -1 prior to packing.
-It is not possible to store non-permutation transformations inside an indirection map and so the stencil application needs to implement a separate stage to resolve these orientation transformations.
-This is the approach used by Basix~\cite{scroggsConstructionArbitraryOrder2021,scroggsBasixRuntimeFinite2022}, part of the FEniCSx finite element software suite~\cite{loggAutomatedSolutionDifferential2012,AlnaesBlechta2015a}.
-However, to our knowledge, this is not performed by any existing general purpose stencil library.

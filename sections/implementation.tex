@@ -910,6 +910,7 @@ To begin with, distribution of \py{Globals} is trivial.
 They represent globally consistent values and so consensus between processes is reached via all-to-all broadcasts.
 
 \subsubsection{Dats}
+\label{sec:impl_parallel_dats}
 
 \py{Dats}, by comparison, are distributed in a much more complicated way.
 Every \gls{dof} stored by a \py{Dat} `belongs' to a single process but it may be needed for a stencil on a process storing adjacent points.
