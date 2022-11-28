@@ -182,11 +182,11 @@ The distribution of these parallel objects is discussed in Section~\ref{sec:impl
       \end{scope}
 
       \node (nodeslabel) [ptlabel] at (7,.5) {Nodes};
-      \node (dofslabel) [ptlabel] at (7,2.5) {\glspl{dof}};
+      \node (dofslabel) [ptlabel] at (7,2.5) {\py{dim}};
     \end{tikzpicture}
     \caption{
       A typical \pyop2 \py{Dat} data layout for a \py{DataSet} with \py{dim} \py{(3,)}.
-      Note that the nodes are unordered, since we are on an unstructured mesh, but that the \glspl{dof} are ordered.
+      Note that the nodes are unordered, since we are on an unstructured mesh, but that the \py{dim} entries are ordered.
     }
     \label{fig:vdat_pyop2}
   \end{subfigure}
@@ -234,7 +234,7 @@ The distribution of these parallel objects is discussed in Section~\ref{sec:impl
 
       \node (pointslabel) [ptlabel] at (7,.5) {Points};
       \node (nodeslabel) [ptlabel] at (7,2.5) {Nodes};
-      \node (dofslabel) [ptlabel] at (7,4.5) {\glspl{dof}};
+      \node (dofslabel) [ptlabel] at (7,4.5) {\py{dim}};
     \end{tikzpicture}
     \caption{
       The equivalent \pyop3 data layout that is aware of the topology of the mesh.
@@ -260,9 +260,9 @@ The distribution of these parallel objects is discussed in Section~\ref{sec:impl
       \node [node] (cnodes) at (-2,-2) {nodes};
       \node [node] (enodes) at (0,-2) {nodes};
       \node [node] (vnodes) at (2,-2) {nodes};
-      \node [node] (cdofs) at (-2,-3) {\glspl{dof}};
-      \node [node] (edofs) at (0,-3) {\glspl{dof}};
-      \node [node] (vdofs) at (2,-3) {\glspl{dof}};
+      \node [node] (cdofs) at (-2,-3) {\py{dim}};
+      \node [node] (edofs) at (0,-3) {\py{dim}};
+      \node [node] (vdofs) at (2,-3) {\py{dim}};
 
       \draw [-{stealth}] (root) -- (cells);
       \draw [-{stealth}] (root) -- (edges);
@@ -293,9 +293,9 @@ root = (
   .add_subaxis("cells", AxisPart(ncnodes, id="cnodes"))
   .add_subaxis("edges", AxisPart(nenodes, id="enodes"))
   .add_subaxis("verts", AxisPart(nvnodes, id="vnodes"))
-  .add_subaxis("cnodes", AxisPart(ncdofs))
-  .add_subaxis("enodes", AxisPart(nedofs))
-  .add_subaxis("vnodes", AxisPart(nvdofs))
+  .add_subaxis("cnodes", AxisPart(cdim))
+  .add_subaxis("enodes", AxisPart(edim))
+  .add_subaxis("vnodes", AxisPart(vdim))
 )
     \end{minted}
     \caption{

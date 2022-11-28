@@ -1,84 +1,25 @@
 \section{Background}
 \label{sec:background}
 
-\subsection{Stencil computations}
-
-Stencil computations are ubiquitous in the numerical solution of \glspl{pde}.
-Given a computational domain described as a (possibly unstructured) mesh along with data associated with certain topological entities in the mesh (e.g. the vertices), a stencil computation refers to the process of:
-a) looping over some subset of topological entities,
-b) reading data that is `close' to the current entity (a \textit{stencil}),
-c) executing some computation (kernel) using the stencil as input, and
-d) scattering the computation result back to some global data structure.
-\todo{A picture would be nice to help illustrate this - like the PyOP2 one.}
-
-An important example of a stencil computation is \textit{finite element assembly}, itself one of the stages of \gls{fem}.
-\todo{Could easily write a lot more on FEM.}
-In the assembly process, integrals are evaluated for each cell of the mesh and the results are incremented into a global matrix and vector.
-For \gls{fem}, the stencil is defined to be all \glspl{dof} stored on the cell and its connected edges and vertices (a.k.a. the cell's \textit{closure} - see Section~\ref{sec:background_mesh_dmplex}).
-For \gls{dg} methods the iteration set can sometimes be the facets of the mesh, and the stencils the closure `macro cell' formed of the two cells that touch the facet.
-
-Although this work will largely focus specifically on \gls{fem}, the concept of a stencil computation applies equally to finite difference and finite volume methods.
-
-\subsection{Existing software for stencil computations}
-\label{sec:stencillang}
-
-Given the abstraction's wide range of applications, a fair number of libraries exist for (at least partially) automating the work of developing a stencil application.
-For the following we choose to classify these libraries according to whether they are `mesh-aware' or `mesh-oblivious'.
-By mesh-aware we mean that the library is responsible for interacting with and querying the mesh whereas mesh-oblivious libraries are unaware of the mesh's specific implementation and responsibility for executing the right topological queries is passed to the library's user.
-As we will discuss, there are advantages and drawbacks to both approaches.
-
-Some notable examples of mesh-aware stencil libraries include the \glspl{dsl} Liszt~\cite{devitoLisztDomainSpecific2011}, Ebb~\cite{bernsteinEbbDSLPhysical2016} and Simit~\cite{kjolstadSimitLanguagePhysical2016}.
-Liszt represents meshes as collections of \textit{sets}, with \textit{topological relations} between them.
-It supports both distributed memory parallelism through MPI and shared memory parallelism with pthreads; GPUs are also supported.
-Instead of explicitly being for unstructured meshes, Ebb takes a more abstract approach and opts for using database-style \textit{relations} to describe the connectivity of the mesh.
-This permits Ebb to also handle structured meshes which are typically faster (see Section~\ref{sec:background_structure}).
-Distributed memory parallelism is currently not supported.
-Lastly, Simit represents unstructured meshes using \textit{hypergraphs}.
-Like Ebb, distributed memory parallelism is not supported.x
-
-Having the library be mesh-aware, all three \glspl{dsl} are able to be highly expressive and flexible and entire applications can be written in fewer than 100 lines of code.
-However, in order to accomplish this, each one has had to implement its own custom mesh implementation inevitably resulting in an increased maintenance burden for the developer and a reduced feature set compared to more widely used mesh frameworks such as DMPlex (Section~\ref{sec:background_mesh_dmplex}).
-
-A good example of a mesh-oblivious stencil library is OP2~\cite{mudaligeOP2ActiveLibrary2012,mudaligeDesignInitialPerformance2013}.
-Rather than being a \gls{dsl}, users write code including calls to the OP2 API which is then source-to-source translated into optimised code which can then be compiled.
-Similar to Liszt, topological entities are represented as \textit{sets} and topological relations by \textit{maps} between sets.
-Stencil computations are expressed as \textit{parallel loops} where the user declares the \textit{kernel} to be executed, the \textit{iteration set} and the \textit{arguments} to the kernel where each argument consists of a parallel vector (termed a \textit{dat}), an access descriptor (e.g. \clang{OP_READ} or \clang{OP_INC}) and an optional indirection map.
-
-OP2 supports a wide range of backends and has support for distributed memory parallelism, in fact it has a clever solution for interleaving computation and communication to aid performance (Section~\ref{sec:impl_parallel_dats}).
-
-Since OP2 is mesh-oblivious and therefore stores no information about the underlying mesh it is entirely agnostic to the specific mesh implementation, giving maximum flexibility to the user.
-However, as a consequence the non-trivial burdens of determining the sets and tabulating the indirection maps are passed to the user resulting in more complicated and less readable code.
-
-\subsubsection{\pyop2}
-
-\pyop2 is a mesh-oblivious stencil library intended to be a Python implementation of OP2~\cite{rathgeberPyOP2HighLevelFramework2012}.
-Since the fundamental OP2 concepts of sets, maps between sets and parallel loops are naturally the same, the main difference between the two libraries is that \pyop2 is a \textit{runtime implementation} whereas OP2 depends on static analysis and source-to-source code transformations.
-Being a runtime implementation, \pyop2 has access to runtime-specific information that it can exploit to enable additional optimisations.
-
-Beyond this core difference, \pyop2 also has a slightly different feature set to OP2:
-
-\begin{itemize}
-  \item
-    Only distributed memory parallelism is supported.
-  \item
-    Parallel loops can assemble sparse matrices.
-  \item
-    Execution on GPUs is still a work-in-progress~\cite{fenics2021-kulkarni}.
-  \item
-    Iteration over extruded meshes is supported (Section~\ref{sec:background_structure}).
-\end{itemize}
-
-% briefly mention Firedrake TSFC UFL, loopy - context needed for later
-\pyop2 is used extensively by Firedrake, a library for automating the solution of \glspl{pde} using \gls{fem}~\cite{rathgeberFiredrakeAutomatingFinite2016}.
-\todo{Could add a load more detail if desired}
-In Firedrake, users express their \gls{pde} of interest (in weak form) in near-mathematical notation using \gls{ufl}, a \gls{dsl} embedded in Python~\cite{alnaesUnifiedFormLanguage2014a}.
-Firedrake can then compile this form using \gls{tsfc}~\cite{homolyaTSFCStructurePreservingForm2018} before marshalling both \pyop2 and PETSc~\cite{petsc-web-page,petsc-user-ref,petsc-efficient} (a linear algebra toolkit) to automate its solution.
-
-One of the places where Firedrake uses \pyop2 is to assemble the global matrix and vector required by \gls{fem}.
-To do this the compiled form is used as the \textit{kernel} for a \pyop2 parallel loop and the \textit{iteration set} is the cells of the mesh.
-
-\subsection{Mesh representations}
+\subsection{Meshes}
 \label{sec:background_mesh}
+
+When solving \glspl{pde} numerically, the domain of interest is discretised into a \textit{mesh} composed of many polytopal cells (e.g. simplices, quadrilaterals or hexahedra).
+These cells, along with the other topological entities with lower dimension (i.e. facets, edges and vertices), can have \glspl{dof} stored on them, representing some physically quantity distributed over the domain.
+For higher order methods, multiple \glspl{dof} may be stored on each entity at \textit{nodes} (shown in Figure~\ref{fig:orient}).
+Similarly, for vector-valued quantities, multiple \glspl{dof} may be stored at the same node.
+
+Meshes can be classified as either \textit{structured}, \textit{unstructured} or \textit{partially-structured} depending on the regularity of the mesh connectivity.
+Structured and partially-structured meshes tend to have a small performance advantage over unstructured meshes (see Section~\ref{sec:background_structure}).
+
+In software, meshes are usually represented as sets of topological entities, and the library provides a query language to identify subsets, determine connectivity between sets and access data stored on each entity.
+Library users, however, can have disparate needs for the library (e.g. mesh hierarchies, adaptivity, interoperability with mesh generators) and so designing a suitable abstraction with enough features while still remaining performant is a challenge.
+
+One approach for storing a mesh is to treat the topological entities as sets and queries as a relational database~\cite{tautgesMOABMeshOrientedDatabase2004}.
+Whilst this lowering of the abstraction lets the software utilise existing database optimisations, it can also obscure some geometric information and make dimension-independent programming more challenging~\cite{knepleyMeshAlgorithmsPDE2009}.
+
+\subsubsection{DMPlex}
+\label{sec:background_mesh_dmplex}
 
 \begin{figure}
   \centering
@@ -116,7 +57,10 @@ To do this the compiled form is used as the \textit{kernel} for a \pyop2 paralle
       \basichasse
     \end{tikzpicture}
   \end{subfigure}
-  \caption{An example mesh and its Hasse diagram representation.}
+  \caption{
+    An example mesh and its Hasse diagram representation.
+    Note that the topological entities are numbered according to the DMPlex convention of first cells, then vertices, then faces.
+  }
   \label{fig:hasse_diagram}
 \end{figure}
 
@@ -160,42 +104,102 @@ To do this the compiled form is used as the \textit{kernel} for a \pyop2 paralle
     \caption{$\plexstar(4) = \{4,8,9,10,1,2\}$}
   \end{subfigure}
 
-  \caption{The possible DMPlex restriction queries (applied to the Hasse diagram from Figure~\ref{fig:hasse_diagram}).}
+  \caption{The possible DMPlex covering queries (applied to the Hasse diagram from Figure~\ref{fig:hasse_diagram}).}
   \label{fig:plex_restrictions}
 \end{figure}
 
-In software, a mesh is typically represented by sets of topological entities (e.g. cells, edges and vertices) along with adjacency relations between these sets.
+In this work we will focus on DMPlex~\cite{knepleyMeshAlgorithmsPDE2009,langeEfficientMeshManagement2016,knepleyUnstructuredOverlappingMesh2015}, the unstructured mesh abstraction used in the linear algebra library PETSc~\cite{petsc-web-page,petsc-user-ref,petsc-efficient}.
+Rather than using a database, DMPlex represents meshes as a Hasse diagram (a.k.a. a \gls{poset}).
+Every topological entity, termed a \textit{point}, is given a unique number and related via uni-directional \textit{arrows} describing the connectivity between points.
+An example mesh and its associated Hasse diagram are shown in Figure~\ref{fig:hasse_diagram}.
 
-% here
+To express topological queries in DMPlex, a number of functions, termed \textit{covering relations} are provided (Figure~\ref{fig:plex_restrictions}).
+More complex queries may also be created by composing these covering relations.
+For example, the query ``return all of the points in the closure of the cells touching facet $f$" would be expressed as $\closure(\support(f))$.
+In Figure~\ref{fig:hasse_diagram}, $\closure(\support(9))$ would correspond to all of the points in the mesh.
+Composed queries such as this that return a sizeable number of mesh points are frequently referred to as \textit{patches}.
 
-% need to emphasise the difference between DoFs, nodes and points
-% and basis functions vs coefficients - ref orientation issues discussed later
+Since topological entities are universally referred to as points, most of DMPlex is written in an entirely dimension-independent way.
+It also has support for a wide range of operations useful when solving \glspl{pde} including: interoperability with mesh generation libraries, adaptivity, parallel mesh distribution, orientations (Section~\ref{sec:background_orientation}) and mesh hierarchies.
 
-% describe MOAB and others(?), then DMPlex in its own section
+When writing a PETSc application, users do not store data directly on the mesh, but instead instantiate parallel vectors (\clang{Vecs}) by composing the mesh with a \clang{PetscSection}.
+In PETSc, a \clang{PetscSection} is used to describe data layouts by associating each mesh point with a given number of \glspl{dof} (\clang{PetscSectionSetDof(point,ndofs)}), allowing offsets in the \clang{Vec} to be tabulated and accessed (\clang{PetscSectionGetOffset(point,&offset)}).
 
-Possible abstractions capturing this behaviour include databases (ebb, moab) or hypergraphs (simit).
-In this work we focus on DMPlex, the unstructured mesh abstraction used in PETSc.
-In contrast with Ebb, Simit or Liszt, DMPlex is a more general purpose mesh abstraction and so has a more substantial feature set.
+\subsection{Stencil computations}
 
-\subsubsection{DMPlex}
-\label{sec:background_mesh_dmplex}
+Stencil computations are ubiquitous in the numerical solution of \glspl{pde}.
+Given a computational domain described as a (possibly unstructured) mesh along with data associated with certain topological entities in the mesh (e.g. the vertices), a stencil computation refers to the process of:
+a) looping over some subset of topological entities,
+b) reading data that is `close' to the current entity (a \textit{stencil}),
+c) executing some computation (kernel) using the stencil as input, and
+d) scattering the computation result back to some global data structure.
+\todo{A picture would be nice to help illustrate this - like the PyOP2 one.}
 
-% parallel partioning, adaptation, I/O, AMR...
+An important example of a stencil computation is \textit{finite element assembly}, itself one of the stages of \gls{fem}.
+\todo{Could easily write a lot more on FEM.}
+In the assembly process, integrals are evaluated for each cell of the mesh and the results are incremented into a global matrix and vector.
+For \gls{fem}, the stencil is defined to be all \glspl{dof} stored on the cell and its connected edges and vertices (a.k.a. the cell's \textit{closure} - see Section~\ref{sec:background_mesh_dmplex}).
+For \gls{dg} methods the iteration set can sometimes be the facets of the mesh, and the stencils the closure `macro cell' formed of the two cells that touch the facet.
 
-In DMPlex, the mesh is represented as a \textit{CW-complex}, an object from algebraic topology that describes some topological space.
-In such a complex, all topological entities (e.g. cells, vertices) are simply referred to as \textit{points} and the connectivity of the mesh can be expressed as the edges of a \gls{dag} with the vertices being the points of the mesh.
-More specifically, the points and relations form a \gls{poset} such that the mesh can be visualised using a Hasse diagram (Figure~\ref{fig:hasse_diagram}).
+Although this work will largely focus specifically on \gls{fem}, the concept of a stencil computation applies equally to finite difference and finite volume methods.
 
-It is important to note that DMPlex works for arbitrary dimension.
+\subsection{Existing software for stencil computations}
+\label{sec:stencillang}
 
+Given the abstraction's wide range of applications, a fair number of libraries exist for (at least partially) automating the work of developing a stencil application.
+For the following we choose to classify these libraries according to whether they are `mesh-aware' or `mesh-oblivious'.
+By mesh-aware we mean that the library is responsible for interacting with and querying the mesh whereas mesh-oblivious libraries are unaware of the mesh's specific implementation and responsibility for executing the right topological queries is passed to the library's user.
+As we will discuss, there are advantages and drawbacks to both approaches.
 
-Stencil queries are natural to express at this level.
-For instance, the classical finite element request of ``give me all of the \glspl{dof} that have local support" is simply expressed as the closure of a given cell.
-Another example useful for finite volume calculations: ``what are my neighbouring cells?" is supp(cone(c)).
-One can also do clever patch things.
+Some notable examples of mesh-aware stencil libraries include the \glspl{dsl} Liszt~\cite{devitoLisztDomainSpecific2011}, Ebb~\cite{bernsteinEbbDSLPhysical2016} and Simit~\cite{kjolstadSimitLanguagePhysical2016}.
+Liszt represents meshes as collections of \textit{sets}, with \textit{topological relations} between them.
+It supports both distributed memory parallelism through MPI and shared memory parallelism with pthreads; GPUs are also supported.
+Instead of explicitly being for unstructured meshes, Ebb takes a more abstract approach and opts for using database-style \textit{relations} to describe the connectivity of the mesh.
+This permits Ebb to also handle structured meshes which are typically faster (see Section~\ref{sec:background_structure}).
+Distributed memory parallelism is currently not supported.
+Lastly, Simit represents unstructured meshes using \textit{hypergraphs}, which are in fact very similar to the \gls{poset} description used by DMPlex.
+Like Ebb, distributed memory parallelism is not supported.
 
-With DMPlex, parallel vectors are created by associating a DMPlex mesh with a \clang{PetscSection}.
-A \clang{PetscSection} is a simple object that tabulates offsets such that entries in an array may be addressed.
+Having the library be mesh-aware, all three \glspl{dsl} are able to be highly expressive and flexible and entire applications can be written in fewer than 100 lines of code.
+However, in order to accomplish this, each one has had to implement its own custom mesh implementation inevitably resulting in an increased maintenance burden for the developer and a reduced feature set compared to more widely used mesh frameworks such as DMPlex (Section~\ref{sec:background_mesh_dmplex}).
+
+A good example of a mesh-oblivious stencil library is OP2~\cite{mudaligeOP2ActiveLibrary2012,mudaligeDesignInitialPerformance2013}.
+Rather than being a \gls{dsl}, users write code including calls to the OP2 API which is then source-to-source translated into optimised code which can then be compiled.
+Similar to Liszt, topological entities are represented as \textit{sets} and topological relations by \textit{maps} between sets.
+Stencil computations are expressed as \textit{parallel loops} where the user declares the \textit{kernel} to be executed, the \textit{iteration set} and the \textit{arguments} to the kernel where each argument consists of a parallel vector (termed a \textit{dat}), an access descriptor (e.g. \clang{OP_READ} or \clang{OP_INC}) and an optional indirection map.
+
+OP2 supports a wide range of backends and has support for distributed memory parallelism, in fact it has a clever solution for interleaving computation and communication to aid performance (Section~\ref{sec:impl_parallel_dats}).
+
+Since OP2 is mesh-oblivious and therefore stores no information about the underlying mesh it is entirely agnostic to the specific mesh implementation, giving maximum flexibility to the user.
+However, as a consequence the non-trivial burdens of determining the sets and tabulating the indirection maps are passed to the user resulting in more complicated and less readable code.
+
+\subsubsection{\pyop2}
+
+\pyop2 is a mesh-oblivious stencil library intended to be a Python implementation of OP2~\cite{rathgeberPyOP2HighLevelFramework2012}.
+Since the fundamental OP2 concepts of sets, maps between sets and parallel loops are naturally the same, the main difference between the two libraries is that \pyop2 is a \textit{runtime implementation} whereas OP2 depends on static analysis and source-to-source code transformations.
+Being a runtime implementation, \pyop2 has access to runtime-specific information that it can exploit to enable additional optimisations.
+
+Beyond this core difference, \pyop2 also has a slightly different feature set to OP2:
+
+\begin{itemize}
+  \item
+    Only distributed memory parallelism is supported.
+  \item
+    Parallel loops can assemble sparse matrices.
+  \item
+    Execution on GPUs is still a work-in-progress~\cite{fenics2021-kulkarni}.
+  \item
+    Iteration over extruded meshes is supported (Section~\ref{sec:background_structure}).
+\end{itemize}
+
+% briefly mention Firedrake TSFC UFL, loopy - context needed for later
+\pyop2 is used extensively by Firedrake, a library for automating the solution of \glspl{pde} using \gls{fem}~\cite{rathgeberFiredrakeAutomatingFinite2016}.
+\todo{Could add a load more detail if desired}
+In Firedrake, users express their \gls{pde} of interest (in weak form) in near-mathematical notation using \gls{ufl}, a \gls{dsl} embedded in Python~\cite{alnaesUnifiedFormLanguage2014a}.
+Firedrake can then compile this form using \gls{tsfc}~\cite{homolyaTSFCStructurePreservingForm2018} before marshalling both \pyop2 and PETSc to automate its solution.
+
+One of the places where Firedrake uses \pyop2 is to assemble the global matrix and vector required by \gls{fem}.
+To do this the compiled form is used as the \textit{kernel} for a \pyop2 parallel loop and the \textit{iteration set} is the cells of the mesh.
 
 \subsection{Orienting degrees-of-freedom}
 \label{sec:background_orientation}
