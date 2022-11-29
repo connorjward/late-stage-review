@@ -128,7 +128,7 @@ In PETSc, a \clang{PetscSection} is used to describe data layouts by associating
 \subsection{Stencil computations}
 
 Stencil computations are ubiquitous in the numerical solution of \glspl{pde}.
-Given a computational domain described as a (possibly unstructured) mesh along with data associated with certain topological entities in the mesh (e.g. the vertices), a stencil computation refers to the process of:
+Given a (possibly unstructured) mesh along with data associated with certain topological entities of it, a stencil computation refers to the process of:
 a) looping over some subset of topological entities,
 b) reading data that is `close' to the current entity (a \textit{stencil}),
 c) executing some computation (kernel) using the stencil as input, and
@@ -143,7 +143,7 @@ For \gls{dg} methods the iteration set can sometimes be the facets of the mesh, 
 
 Although this work will largely focus specifically on \gls{fem}, the concept of a stencil computation applies equally to finite difference and finite volume methods.
 
-\subsection{Existing software for stencil computations}
+\subsubsection{Existing software for stencil computations}
 \label{sec:stencillang}
 
 Given the abstraction's wide range of applications, a fair number of libraries exist for (at least partially) automating the work of developing a stencil application.

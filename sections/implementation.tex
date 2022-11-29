@@ -318,7 +318,7 @@ The \py{Set} here consists of the nodes in the mesh and the \py{dim} is \py{(3,)
 The fundamental idea behind \pyop3 is the observation that such a two-layered data layout is insufficient for fully describing the complexities of data living on an unstructured mesh; in particular, \textit{topological information is lost}.
 Typical \py{Dats} in \pyop2 use the \textit{nodes} of the mesh to form the underlying \py{Set}.
 Recalling from Section~\ref{sec:background_mesh} that the nodes of a mesh are associated with a particular topological entity (i.e. cells, edges, etc), using nodes as a basis for describing a data layout means that information about the topological entities these nodes come from is lost.
-We claim that this `premature flattening' of the data layout is disadvantageous, and so \pyop3 aims for a more complete description of it.
+There are a number of disadvantages to this `premature flattening' of the data layout, and so \pyop3 aims for a more complete description of it.
 
 In order to do so, \pyop3 replaces the two-layered \py{DataSet} abstraction with a hierarchical, tree-based data layout.
 Each layer of the hierarchy (e.g. topological entities or nodes) is represented by a \py{MultiAxis} object, and to each \py{MultiAxis} is associated one or more \py{AxisParts}.
