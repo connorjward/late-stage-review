@@ -454,7 +454,7 @@ This is useful for patch-based computations (see Section~\ref{sec:future_patch})
 \subsubsection{Sparsity}
 \label{sec:impl_datalayout_sparsity}
 
-Although not yet implemented, it should be entirely possible to implement sparse data structures by making small extensions to the existing abstraction.
+Although not yet implemented, it should be entirely possible to introduce sparse data structures by making small extensions to the existing data layout abstraction.
 If we consider a sparse matrix compressed with compressed-sparse-row (CSR) format, the data layout is described using two arrays: the row and column indices.
 This is very similar to our existing solution for ragged arrays above except that we assume that the internal dimension is logically dense, and hence do not need to specify column indices.
 \todo{Would be served well by an example}

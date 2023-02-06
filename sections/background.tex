@@ -410,6 +410,7 @@ With vector \glspl{dof} it can happen that, as well as possibly being out of ord
 For example, in Figures~\ref{fig:orient_vector_ref} and~\ref{fig:orient_vector_flip} one can see that the effect of flipping an edge inverts the direction of the vector \glspl{dof}, so they must be multiplied by -1 to return to canonical.
 Things get even more difficult in 3D because vector-valued \glspl{dof} on facets can be defined relative to the two tangent vectors of the face.
 The transformation back to canonical therefore can require rotations (via $2\times2$ matrices) as well as flips.
+\todo{Serendipity elements also require complicated transformations using a full, dense matrix.}
 
 \subsubsection{A partial solution: Mesh renumbering}
 

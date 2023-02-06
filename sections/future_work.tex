@@ -1,7 +1,27 @@
 \section{Future work}
 \label{sec:future}
 
-In this section we present a number of possible extensions to \pyop3.
+\subsection{Roadmap}
+\label{sec:future_roadmap}
+
+The approximate plan of action for the development and rollout of \pyop3 is as follows:
+
+\begin{enumerate}
+  \item
+    Complete the code for the data layout abstraction, ensuring that the components are fully composable and tested.
+  \item
+    Add support for sparse matrices (via PETSc) and parallelism.
+  \item
+    Write the mesh `layer' of the code (e.g. automatically computing the right indirection maps from calls to \py{closure(...)} or \py{support(...)}).
+  \item
+    Ensure that the code is sufficiently optimised for its performance to be comparable to \pyop2.
+    This will involve activities such as modifying algorithms for better complexity, or moving performance critical code to Cython.
+  \item
+    Produce a (mostly) working branch of Firedrake that uses \pyop3.
+    Extruded meshes can natively use DMPlex, incurring a small performance penalty (see Section~\ref{sec:background_structure}).
+  \item
+    Incrementally add new features including: orientation support, inter-element vectorisation, data layout transformations and support for semi-structured meshes.
+\end{enumerate}
 
 \subsection{Direct addressing for partially-structured meshes}
 \label{sec:future_partialstructure}
